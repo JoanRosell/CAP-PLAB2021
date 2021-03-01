@@ -17,11 +17,21 @@ Proyecto de Laboratorio de la asignatura Computación de Altas Prestaciones (CAP
 
 ## Setup
 
-repo setup...
+Para adquirir el código basta con clonar el repositorio con el siguiente comando:
+
+```shell
+$ git clone git@github.com:JoanRosell/CAP-PLAB2021.git
+```
 
 ## Commands
 
-make commands...
+Para compilar el proyecto:
+
+```shell
+$ ./compile.sh
+```
+
+Este script compila el código fuente y genera el ejecutable en un directorio llamado _build_ que está excluido de Git. Esto evita problemas a la hora de hacer los merges y pushes ya que sólo se comparte el código fuente.
 
 ## Status
 
