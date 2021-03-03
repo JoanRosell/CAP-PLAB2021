@@ -8,11 +8,11 @@
 #   (int) numOut: number of output neurons
 #
 # Parse parameters
-filename = $1
-epochs = $2
-numIn = $3
-numHid = $4
-numOut = $5
+filename=$1
+epochs=$2
+numIn=$3
+numHid=$4
+numOut=$5
 
 # Launch sbatch
 sbatch -o $filename.out -e $filename.err job.sh $epochs $numIn $numHid $numOut

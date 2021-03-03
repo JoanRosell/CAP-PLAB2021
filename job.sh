@@ -18,10 +18,10 @@ module add cmake/3.13.4
 ./compile.sh
 
 # Parse parameters
-epochs = $1
-numIn = $2
-numHid = $3
-numOut = $4
+epochs=$1
+numIn=$2
+numHid=$3
+numOut=$4
 
 # Execute
 ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut
