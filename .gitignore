@@ -53,4 +53,7 @@ dkms.conf
 
 # Build directory
 build/
+cmake-build-*/
 *.err
+
+.idea/
