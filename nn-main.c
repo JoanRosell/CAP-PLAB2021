@@ -41,7 +41,6 @@
 
 int total;
 int seed=50;
-
 int rando()
 {
     seed = (214013*seed+2531011);
@@ -58,14 +57,14 @@ void freeTSet( int np, char **tset ){
 	free(tset);
 }
 
-void trainN(){
+void trainN(const int epochs, const int numIn, const int numHid, const int numOut) {
 
 	char **tSet;
 
-    float DeltaWeightIH[NUMHID][NUMIN], DeltaWeightHO[NUMOUT][NUMHID];
+    float DeltaWeightIH[numHid][numIn], DeltaWeightHO[numOut][numHid];
     float Error, BError, eta = 0.3, alpha = 0.5, smallwt = 0.22;
  	int ranpat[NUMPAT];
- 	float Hidden[NUMHID], Output[NUMOUT], DeltaO[NUMOUT], DeltaH[NUMHID];
+ 	float Hidden[numHid], Output[numOut], DeltaO[numOut], DeltaH[numHid];
  	float SumO, SumH, SumDOW;
 
 	if( (tSet = loadPatternSet( NUMPAT, "optdigits.tra", 1 ) ) == NULL){
@@ -73,19 +72,19 @@ void trainN(){
 		exit( -1 );
 	}
 
-	for( int i = 0; i < NUMHID; i++ )
-		for( int j = 0; j < NUMIN; j++ ){
+	for( int i = 0; i < numHid; i++ )
+		for( int j = 0; j < numIn; j++ ){
 			WeightIH[i][j] = 2.0 * ( frando() + 0.01 ) * smallwt;
 			DeltaWeightIH[i][j] = 0.0;
 		}
 
-	for( int i = 0; i < NUMOUT; i++)
-		for( int j = 0; j < NUMHID; j++ ){
+	for( int i = 0; i < numOut; i++)
+		for( int j = 0; j < numHid; j++ ){
 			WeightHO[i][j] = 2.0 * ( frando() + 0.01 ) * smallwt;
 			DeltaWeightHO[i][j] = 0.0;
 		}
 
-    	for( int epoch = 0 ; epoch < 1000000 ; epoch++ ) {    // iterate weight updates
+    	for( int epoch = 0 ; epoch < epochs ; epoch++ ) {    // iterate weight updates
 
         	for( int p = 0 ; p < NUMPAT ; p++ )   // randomize order of individuals
             	ranpat[p] = p;
@@ -103,36 +102,36 @@ void trainN(){
                 for( int np = nb*BSIZE ; np < (nb + 1)*BSIZE ; np++ ) {    // repeat for all the training patterns within the batch
 
                     int p = ranpat[np];
-                    for( int j = 0 ; j < NUMHID ; j++ ) {    // compute hidden unit activations
+                    for( int j = 0 ; j < numHid ; j++ ) {    // compute hidden unit activations
                         SumH = 0.0;
-                        for( int i = 0 ; i < NUMIN ; i++ ) SumH += tSet[p][i] * WeightIH[j][i];
+                        for( int i = 0 ; i < numIn ; i++ ) SumH += tSet[p][i] * WeightIH[j][i];
                         Hidden[j] = 1.0/(1.0 + exp( -SumH )) ;
                     }
-                    for( int k = 0 ; k < NUMOUT ; k++ ) {    // compute output unit activations and errors
+                    for( int k = 0 ; k < numOut ; k++ ) {    // compute output unit activations and errors
                         SumO = 0.0;
-                        for( int j = 0 ; j < NUMHID ; j++ ) SumO += Hidden[j] * WeightHO[k][j] ;
+                        for( int j = 0 ; j < numHid ; j++ ) SumO += Hidden[j] * WeightHO[k][j] ;
                         Output[k] = 1.0/(1.0 + exp(-SumO)) ;   // Sigmoidal Outputs
                         BError += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]) ;   // SSE
                         DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]) ;   // Sigmoidal Outputs, SSE
                     }
-                    for( int j = 0 ; j < NUMHID ; j++ ) {     // update delta weights DeltaWeightIH
+                    for( int j = 0 ; j < numHid ; j++ ) {     // update delta weights DeltaWeightIH
                         SumDOW = 0.0 ;
-                        for( int k = 0 ; k < NUMOUT ; k++ ) SumDOW += WeightHO[k][j] * DeltaO[k] ;
+                        for( int k = 0 ; k < numOut ; k++ ) SumDOW += WeightHO[k][j] * DeltaO[k] ;
                         DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]) ;
-                        for( int i = 0 ; i < NUMIN ; i++ )
+                        for( int i = 0 ; i < numIn ; i++ )
                             DeltaWeightIH[j][i] = eta * tSet[p][i] * DeltaH[j] + alpha * DeltaWeightIH[j][i];
                     }
-                    for( int k = 0 ; k < NUMOUT ; k ++ )    // update delta weights DeltaWeightHO
-                        for( int j = 0 ; j < NUMHID ; j++ )
+                    for( int k = 0 ; k < numOut ; k ++ )    // update delta weights DeltaWeightHO
+                        for( int j = 0 ; j < numHid ; j++ )
                             DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
                 }
                 Error += BError;
-                for( int j = 0 ; j < NUMHID ; j++ )     // update weights WeightIH
-                        for( int i = 0 ; i < NUMIN ; i++ )
+                for( int j = 0 ; j < numHid ; j++ )     // update weights WeightIH
+                        for( int i = 0 ; i < numIn ; i++ )
                             WeightIH[j][i] += DeltaWeightIH[j][i] ;
 
-                for( int k = 0 ; k < NUMOUT ; k ++ )    // update weights WeightHO
-                        for( int j = 0 ; j < NUMHID ; j++ )
+                for( int k = 0 ; k < numOut ; k ++ )    // update weights WeightHO
+                        for( int j = 0 ; j < numHid ; j++ )
                             WeightHO[k][j] += DeltaWeightHO[k][j] ;
             }
             Error = Error/((NUMPAT/BSIZE)*BSIZE);	//mean error for the last epoch 		
@@ -147,19 +146,19 @@ void trainN(){
      	printf( "END TRAINING\n" );
 }
 
-void printRecognized( int p, float Output[] ){
+void printRecognized(int p, float Output[], const int numOut) {
 	int imax = 0;
 
-	for( int i = 1; i < NUMOUT; i++)
+	for( int i = 1; i < numOut; i++)
 		if ( Output[i] > Output[imax] ) imax = i;
 	printf( "El patró %d sembla un %c\t i és un %d", p, '0' + imax, Validation[p] );
 	if( imax == Validation[p] ) total++;
-    for( int k = 0 ; k < NUMOUT ; k++ )
+    for( int k = 0 ; k < numOut ; k++ )
         	printf( "\t%f\t", Output[k] ) ;
     printf( "\n" );
 }
 
-void runN(){
+void runN(const int numIn, const int numHid, const int numOut) {
 	char **rSet;
 	char *fname[NUMRPAT];
 
@@ -168,21 +167,21 @@ void runN(){
 		exit( -1 );
 	}
 
-	float Hidden[NUMHID], Output[NUMOUT];
+	float Hidden[numHid], Output[numOut];
 
     	for( int p = 0 ; p < NUMRPAT ; p++ ) {    // repeat for all the recognition patterns
-        	for( int j = 0 ; j < NUMHID ; j++ ) {    // compute hidden unit activations
+        	for( int j = 0 ; j < numHid ; j++ ) {    // compute hidden unit activations
             		float SumH = 0.0;
-            		for( int i = 0 ; i < NUMIN ; i++ ) SumH += rSet[p][i] * WeightIH[j][i];
+            		for( int i = 0 ; i < numIn ; i++ ) SumH += rSet[p][i] * WeightIH[j][i];
             		Hidden[j] = 1.0/(1.0 + exp( -SumH )) ;
         	}
 
-        	for( int k = 0 ; k < NUMOUT ; k++ ) {    // compute output unit activations
+        	for( int k = 0 ; k < numOut ; k++ ) {    // compute output unit activations
             		float SumO = 0.0;
-            		for( int j = 0 ; j < NUMHID ; j++ ) SumO += Hidden[j] * WeightHO[k][j] ;
+            		for( int j = 0 ; j < numHid ; j++ ) SumO += Hidden[j] * WeightHO[k][j] ;
             		Output[k] = 1.0/(1.0 + exp( -SumO )) ;   // Sigmoidal Outputs
         	}
-        	printRecognized( p, Output );
+            printRecognized(p, Output, numOut);
     	}
 
 	printf( "\nTotal encerts = %d\n", total );
@@ -190,10 +189,16 @@ void runN(){
 	freeTSet( NUMRPAT, rSet );
 }
 
-int main() {
+int main(int argc, char** argv) {
+    // Read parameters from CLI
+    const int epochs = (argc > 0) ? atoi(argv[0]) : 1000000;
+    const int numIn = (argc > 1) ? atoi(argv[1]) : NUMIN;
+    const int numHid = (argc > 2) ? atoi(argv[2]) : NUMHID;
+    const int numOut = (argc > 3) ? atoi(argv[3]) : NUMOUT;
+
 	clock_t start = clock();
-	trainN();
-	runN();
+    trainN(epochs, numIn, numHid, numOut);
+    runN(numIn, numHid, numOut);
 
 	clock_t end = clock();
 	printf( "\n\nGoodbye! (%f sec)\n\n", (end-start)/(1.0*CLOCKS_PER_SEC) ) ;
