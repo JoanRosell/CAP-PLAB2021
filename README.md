@@ -55,7 +55,7 @@ El script _job.sh_ prepara el entorno, compila y ejecuta el proyecto. Este scrip
 ```shell
 $ ./submit.sh myFile [epochs, numIn, numHid, numOut]
 ```
-Este script lanza un sbatch con el trabajo _job.sh_ y configura los nombres de los archivos de salida/errores según el primer argumento que recibe. **El resto de argumentos son opcionales** y controlan la ejecución del proyecto. Si no se provee ningún argumento opcional el proyecto se ejecuta con los parámetros por defectos definidos en _commons.h_.
+Este script lanza un sbatch con el trabajo _job.sh_ y configura los nombres de los archivos de salida/errores según el primer argumento que recibe. **El resto de argumentos son opcionales** y controlan la ejecución del proyecto. Si no se provee ningún argumento opcional el proyecto se ejecuta con los parámetros por defecto definidos en _commons.h_.
 
 ## Status
 
