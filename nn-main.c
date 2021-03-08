@@ -52,7 +52,7 @@ float frando()
     return rando() / 65536.0f;
 }
 
-void freeTSet(int np, char **tset)
+void freeTSet(int np, char** tset)
 {
     for (int i = 0; i < np; i++)
     {
@@ -63,7 +63,7 @@ void freeTSet(int np, char **tset)
 
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
-    char **tSet;
+    char** tSet;
 
     float DeltaWeightIH[numHid][numIn], DeltaWeightHO[numOut][numHid];
     float Error, BError, eta = 0.3, alpha = 0.5, smallwt = 0.22;
@@ -217,8 +217,8 @@ void printRecognized(int p, float Output[], const int numOut)
 
 void runN(const int numIn, const int numHid, const int numOut)
 {
-    char **rSet;
-    char * fname[NUMRPAT];
+    char** rSet;
+    char*  fname[NUMRPAT];
 
     if ((rSet = loadPatternSet(NUMRPAT, "optdigits.cv", 0)) == NULL)
     {
@@ -257,7 +257,7 @@ void runN(const int numIn, const int numHid, const int numOut)
     freeTSet(NUMRPAT, rSet);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     // Read parameters from CLI
     const int epochs = (argc > 1) ? atoi(argv[1]) : 1000000;
