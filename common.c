@@ -29,7 +29,7 @@ char *readImg( FILE *fd ){
 
     char *img;
 
-    img = (char *)malloc(1024);
+    img = (char *)malloc(1024 + 1); // Add one extra byte to store properly the null char '\0'
 
 	for( int i = 0; i < 32; i++ ){
         	fscanf(fd, "%s\n", &img[i*32]);
