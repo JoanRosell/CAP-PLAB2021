@@ -191,10 +191,10 @@ void runN(const int numIn, const int numHid, const int numOut) {
 
 int main(int argc, char** argv) {
     // Read parameters from CLI
-    const int epochs = (argc > 0) ? atoi(argv[0]) : 1000000;
-    const int numIn = (argc > 1) ? atoi(argv[1]) : NUMIN;
-    const int numHid = (argc > 2) ? atoi(argv[2]) : NUMHID;
-    const int numOut = (argc > 3) ? atoi(argv[3]) : NUMOUT;
+    const int epochs = (argc > 1) ? atoi(argv[1]) : 1000000;
+    const int numIn = (argc > 2) ? atoi(argv[2]) : NUMIN;
+    const int numHid = (argc > 3) ? atoi(argv[3]) : NUMHID;
+    const int numOut = (argc > 4) ? atoi(argv[4]) : NUMOUT;
 
 	clock_t start = clock();
     trainN(epochs, numIn, numHid, numOut);
