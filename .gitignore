@@ -35,6 +35,7 @@
 *.i*86
 *.x86_64
 *.hex
+*.err
 
 # Debug files
 *.dSYM/
@@ -54,6 +55,7 @@ dkms.conf
 # Build directory
 build/
 cmake-build-*/
-*.err
 
+# IDE configuration folders
 .idea/
+.vscode/
