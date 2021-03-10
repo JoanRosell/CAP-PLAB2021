@@ -27,8 +27,6 @@
 *    nn.c   1.0                                       � JOHN BULLINARIA  2004  *
 *******************************************************************************/
 
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -37,7 +35,6 @@
 #include <limits.h>
 
 #include "common.h"
-
 
 int total;
 int seed = 50;
@@ -95,41 +92,51 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-    for (int epoch = 0; epoch < epochs; epoch++)      // iterate weight updates
+#pragma omp parallel num_threads(4)
+    for (int epoch = 0; epoch < epochs; epoch++) // iterate weight updates
     {
-        for (int p = 0; p < NUMPAT; p++)              // randomize order of individuals
+        #pragma omp single
         {
-            ranpat[p] = p;
-        }
-        for (int p = 0; p < NUMPAT; p++)
-        {
-            int x  = rando();
-            int np = (x * x) % NUMPAT;
-            int op = ranpat[p]; ranpat[p] = ranpat[np]; ranpat[np] = op;
-        }
-        Error = BError = 0.0;
+            for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
+            {
+                ranpat[p] = p;
+            }
+            for (int p = 0; p < NUMPAT; p++)
+            {
+                int x  = rando();
+                int np = (x * x) % NUMPAT;
+                int op = ranpat[p];
+                ranpat[p]  = ranpat[np];
+                ranpat[np] = op;
+            }
 
-        printf(".");
-        fflush(stdout);
+            printf(".");
+            fflush(stdout);
+        }
 
-        for (int nb = 0; nb < NUMPAT / BSIZE; nb++)           // repeat for all batches
+        Error = 0.0;
+        for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
         {
             BError = 0.0;
-            for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++)                // repeat for all the training patterns within the batch
+            for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
             {
                 int p = ranpat[np];
-                for (int j = 0; j < numHid; j++)                    // compute hidden unit activations
+
+                #pragma omp for
+                for (int j = 0; j < numHid; j++) // compute hidden unit activations
                 {
-                    SumH = 0.0;
+                    float SumH = 0.0;
                     for (int i = 0; i < numIn; i++)
                     {
                         SumH += tSet[p][i] * WeightIH[j][i];
                     }
                     Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
-                for (int k = 0; k < numOut; k++)                    // compute output unit activations and errors
+
+                #pragma omp for reduction(+: BError)
+                for (int k = 0; k < numOut; k++) // compute output unit activations and errors
                 {
-                    SumO = 0.0;
+                    float SumO = 0.0;
                     for (int j = 0; j < numHid; j++)
                     {
                         SumO += Hidden[j] * WeightHO[k][j];
@@ -138,9 +145,11 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
                     DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
                 }
+                
+                #pragma omp for 
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
-                    SumDOW = 0.0;
+                    float SumDOW = 0.0;
                     for (int k = 0; k < numOut; k++)
                     {
                         SumDOW += WeightHO[k][j] * DeltaO[k];
@@ -151,7 +160,9 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                         DeltaWeightIH[j][i] = eta * tSet[p][i] * DeltaH[j] + alpha * DeltaWeightIH[j][i];
                     }
                 }
-                for (int k = 0; k < numOut; k++)                  // update delta weights DeltaWeightHO
+
+                #pragma omp for
+                for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
                     for (int j = 0; j < numHid; j++)
                     {
@@ -159,8 +170,12 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     }
                 }
             }
-            Error += BError;
-            for (int j = 0; j < numHid; j++)              // update weights WeightIH
+
+            #pragma omp single
+            Error += BError; // We only want to update Error once per iteration
+
+            #pragma omp for
+            for (int j = 0; j < numHid; j++) // update weights WeightIH
             {
                 for (int i = 0; i < numIn; i++)
                 {
@@ -168,7 +183,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            for (int k = 0; k < numOut; k++)              // update weights WeightHO
+            #pragma omp for
+            for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
                 for (int j = 0; j < numHid; j++)
                 {
@@ -176,14 +192,19 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
         }
-        Error = Error / ((NUMPAT / BSIZE) * BSIZE);           //mean error for the last epoch
-        if (!(epoch % 100))
+
+#pragma omp single
         {
-            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-        }
-        if (Error < 0.0004)
-        {
-            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error); break;                  // stop learning when 'near enough'
+            Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
+            if (!(epoch % 100))
+            {
+                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+            }
+            if (Error < 0.0004)
+            {
+                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+                //break; // stop learning when 'near enough'
+            }
         }
     }
 
@@ -228,9 +249,9 @@ void runN(const int numIn, const int numHid, const int numOut)
 
     float Hidden[numHid], Output[numOut];
 
-    for (int p = 0; p < NUMRPAT; p++)             // repeat for all the recognition patterns
+    for (int p = 0; p < NUMRPAT; p++)    // repeat for all the recognition patterns
     {
-        for (int j = 0; j < numHid; j++)          // compute hidden unit activations
+        for (int j = 0; j < numHid; j++) // compute hidden unit activations
         {
             float SumH = 0.0;
             for (int i = 0; i < numIn; i++)
@@ -240,16 +261,16 @@ void runN(const int numIn, const int numHid, const int numOut)
             Hidden[j] = 1.0 / (1.0 + exp(-SumH));
         }
 
-        for (int k = 0; k < numOut; k++)                 // compute output unit activations
+        for (int k = 0; k < numOut; k++) // compute output unit activations
         {
             float SumO = 0.0;
             for (int j = 0; j < numHid; j++)
             {
                 SumO += Hidden[j] * WeightHO[k][j];
             }
-            Output[k] = 1.0 / (1.0 + exp(-SumO));                  // Sigmoidal Outputs
+            Output[k] = 1.0 / (1.0 + exp(-SumO)); // Sigmoidal Outputs
         }
-        printRecognized(p, Output, numOut);
+        //printRecognized(p, Output, numOut);
     }
 
     printf("\nTotal encerts = %d\n", total);
