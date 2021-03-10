@@ -60,6 +60,16 @@ void freeTSet(int np, char** tset)
     free(tset);
 }
 
+float f_and(float val, uint32_t msk)
+{
+    uint32_t tmp;
+
+    memcpy(&tmp, &val, 4);
+    tmp &= msk;
+    memcpy(&val, &tmp, 4);
+    return val;
+}
+
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
     char** tSet;
@@ -76,15 +86,15 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         exit(-1);
     }
 
-	uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
-	for (size_t i = 0; i < NUMPAT; i++)
-	{
-		for (size_t j = 0; j < 1024; j++)
-		{
-			tSet_msk[i*1024 + j] = tSet[i][j] * 0xFFFFFFFF;
-		}	
-	}
-	
+    uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
+    for (size_t i = 0; i < NUMPAT; i++)
+    {
+        for (size_t j = 0; j < 1024; j++)
+        {
+            tSet_msk[i * 1024 + j] = tSet[i][j] * 0xFFFFFFFF;
+        }
+    }
+
     for (int i = 0; i < numHid; i++)
     {
         for (int j = 0; j < numIn; j++)
@@ -103,7 +113,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-#pragma omp parallel 
+#pragma omp parallel
     for (int epoch = 0; epoch < epochs; epoch++) // iterate weight updates
     {
         #pragma omp single
@@ -139,12 +149,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumH = 0.0;
                     for (int i = 0; i < numIn; i++)
                     {
-						uint32_t tmp;	
-						float wIH_val = WeightIH[j][i];
-						memcpy(&tmp, &wIH_val, 4);
-						tmp &= tSet_msk[p*1024 + i];
-						memcpy(&wIH_val, &tmp, 4);
-                        SumH += wIH_val;
+                        SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
                     }
                     Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
@@ -161,8 +166,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
                     DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
                 }
-                
-                #pragma omp for 
+
+                #pragma omp for
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
                     float SumDOW = 0.0;
@@ -173,7 +178,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
                     for (int i = 0; i < numIn; i++)
                     {
-                        DeltaWeightIH[j][i] = eta * tSet[p][i] * DeltaH[j] + alpha * DeltaWeightIH[j][i];
+                        DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
                     }
                 }
 
@@ -225,7 +230,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     }
 
     freeTSet(NUMPAT, tSet);
-	free(tSet_msk);
+    free(tSet_msk);
     printf("END TRAINING\n");
 }
 
