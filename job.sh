@@ -28,3 +28,5 @@ numOut=$4
 
 # Execute
 perf stat -d ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
+perf record ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
+
