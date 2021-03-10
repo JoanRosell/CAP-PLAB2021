@@ -29,9 +29,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include <math.h>
 #include <fcntl.h>
+#include <string.h>
 #include <limits.h>
 
 #include "common.h"
@@ -74,6 +76,15 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         exit(-1);
     }
 
+	uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
+	for (size_t i = 0; i < NUMPAT; i++)
+	{
+		for (size_t j = 0; j < 1024; j++)
+		{
+			tSet_msk[i*1024 + j] = tSet[i][j] * 0xFFFFFFFF;
+		}	
+	}
+	
     for (int i = 0; i < numHid; i++)
     {
         for (int j = 0; j < numIn; j++)
@@ -128,7 +139,12 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumH = 0.0;
                     for (int i = 0; i < numIn; i++)
                     {
-                        SumH += tSet[p][i] * WeightIH[j][i];
+						uint32_t tmp;	
+						float wIH_val = WeightIH[j][i];
+						memcpy(&tmp, &wIH_val, 4);
+						tmp &= tSet_msk[p*1024 + i];
+						memcpy(&wIH_val, &tmp, 4);
+                        SumH += wIH_val;
                     }
                     Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
@@ -209,7 +225,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     }
 
     freeTSet(NUMPAT, tSet);
-
+	free(tSet_msk);
     printf("END TRAINING\n");
 }
 
