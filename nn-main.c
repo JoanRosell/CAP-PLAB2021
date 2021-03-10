@@ -113,8 +113,9 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-#pragma omp parallel
-    for (int epoch = 0; epoch < epochs; epoch++) // iterate weight updates
+Error = 10;
+#pragma omp parallel 
+    for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
         #pragma omp single
         {
