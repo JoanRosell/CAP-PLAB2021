@@ -92,7 +92,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-#pragma omp parallel num_threads(4)
+#pragma omp parallel 
     for (int epoch = 0; epoch < epochs; epoch++) // iterate weight updates
     {
         #pragma omp single
