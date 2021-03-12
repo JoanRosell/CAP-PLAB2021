@@ -225,7 +225,6 @@ Error = 10;
             if (Error < 0.0004)
             {
                 printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-                //break; // stop learning when 'near enough'
             }
         }
     }
