@@ -168,7 +168,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
                 }
 
-                #pragma omp for
+                #pragma omp for nowait
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
                     float SumDOW = 0.0;
@@ -183,7 +183,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     }
                 }
 
-                #pragma omp for
+                #pragma omp for 
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
                     for (int j = 0; j < numHid; j++)
@@ -196,7 +196,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             #pragma omp single
             Error += BError; // We only want to update Error once per iteration
 
-            #pragma omp for
+            #pragma omp for nowait
             for (int j = 0; j < numHid; j++) // update weights WeightIH
             {
                 for (int i = 0; i < numIn; i++)
@@ -205,7 +205,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            #pragma omp for
+            #pragma omp for nowait
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
                 for (int j = 0; j < numHid; j++)
