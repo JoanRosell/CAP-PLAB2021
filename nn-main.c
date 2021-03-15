@@ -79,6 +79,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     int   ranpat[NUMPAT];
     float Hidden[numHid], Output[numOut], DeltaO[numOut], DeltaH[numHid];
     float SumO, SumH, SumDOW;
+    float inv_WeightHO[NUMHID][NUMOUT];
 
     if ((tSet = loadPatternSet(NUMPAT, "optdigits.tra", 1)) == NULL)
     {
@@ -110,6 +111,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         {
             WeightHO[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
             DeltaWeightHO[i][j] = 0.0;
+            inv_WeightHO[j][i]  = WeightHO[i][j];
         }
     }
 
@@ -176,7 +178,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumDOW = 0.0;
                     for (int k = 0; k < numOut; k++)
                     {
-                        SumDOW += WeightHO[k][j] * DeltaO[k];
+                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
                     }
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
                     for (int i = 0; i < numIn; i++)
@@ -209,7 +211,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 for (int j = 0; j < numHid; j++)
                 {
-                    WeightHO[k][j] += DeltaWeightHO[k][j];
+                    WeightHO[k][j]    += DeltaWeightHO[k][j];
+                    inv_WeightHO[j][k] = WeightHO[k][j];
                 }
             }
 
