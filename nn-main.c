@@ -117,7 +117,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 #pragma omp parallel
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
-        #pragma omp single
+        int tid = omp_get_thread_num();
+        if (tid == 1)
         {
             for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
             {
@@ -135,6 +136,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             printf(".");
             fflush(stdout);
         }
+        #pragma omp barrier
 
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
@@ -193,9 +195,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            #pragma omp single
-            Error += BError; // We only want to update Error once per iteration
-
             #pragma omp for nowait
             for (int j = 0; j < numHid; j++) // update weights WeightIH
             {
@@ -213,9 +212,15 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     WeightHO[k][j] += DeltaWeightHO[k][j];
                 }
             }
+
+            if (tid == 1)
+            {
+                Error += BError; // We only want to update Error once per iteration
+            }
         }
 
-#pragma omp single
+
+        if (tid == 1)
         {
             Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
             if (!(epoch % 100))
@@ -227,6 +232,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
             }
         }
+        #pragma omp barrier
     }
 
     freeTSet(NUMPAT, tSet);
