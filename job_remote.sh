@@ -18,7 +18,7 @@ module add gcc/10.2.0 # Using gcc 10.2.0 results in a cmake warning. The project
 module add cmake/3.13.4
 
 # Compile the source code into an executable
-./compile.sh
+gcc -Ofast -fopenmp -lm common.c nn-main.c -o build/CAP-PLAB2021.exe
 
 # Parse parameters
 filename=$1
