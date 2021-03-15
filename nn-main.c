@@ -183,7 +183,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     }
                 }
 
-                #pragma omp for 
+                #pragma omp for
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
                     for (int j = 0; j < numHid; j++)
