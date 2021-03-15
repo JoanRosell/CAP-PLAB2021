@@ -21,12 +21,12 @@ module add cmake/3.13.4
 ./compile.sh
 
 # Parse parameters
-epochs=$1
-numIn=$2
-numHid=$3
-numOut=$4
+filename=$1
+epochs=$2
+numIn=$3
+numHid=$4
+numOut=$5
 
 # Execute
 perf stat -d ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
-perf record ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
-
+perf record -o $filename.data ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
