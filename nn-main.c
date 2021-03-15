@@ -217,6 +217,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 Error += BError; // We only want to update Error once per iteration
             }
+            #pragma omp barrier
         }
 
 
