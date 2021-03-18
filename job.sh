@@ -14,10 +14,10 @@ lscpu
 echo
 
 # Load required modules
-module add gcc/10.2.0 # Using gcc 10.2.0 results in a cmake warning. The project compiles and runs, but more research needs to be made.
 module add cmake/3.13.4
 
 # Compile the source code into an executable
+export CC=/soft/gcc-10.2.0/bin/gcc
 ./compile.sh
 
 # Parse parameters
