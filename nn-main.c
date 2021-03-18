@@ -301,7 +301,7 @@ void runN(const int numIn, const int numHid, const int numOut)
             }
             Output[k] = 1.0 / (1.0 + exp(-SumO)); // Sigmoidal Outputs
         }
-        //printRecognized(p, Output, numOut);
+        printRecognized(p, Output, numOut);
     }
 
     printf("\nTotal encerts = %d\n", total);
