@@ -35,7 +35,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
-
+#include <omp.h>
 #include "common.h"
 
 int total;
@@ -116,11 +116,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     }
 
     Error = 10;
-#pragma omp parallel
+#pragma omp parallel num_threads(1)
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
-        int tid = omp_get_thread_num();
-        if (tid == 1)
+        #pragma omp single
         {
             for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
             {
@@ -138,7 +137,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             printf(".");
             fflush(stdout);
         }
-        #pragma omp barrier
 
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
@@ -216,15 +214,12 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            if (tid == 1)
-            {
-                Error += BError; // We only want to update Error once per iteration
-            }
-            #pragma omp barrier
+            #pragma omp single
+            Error += BError; // We only want to update Error once per iteration
         }
 
 
-        if (tid == 1)
+        #pragma omp single
         {
             Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
             if (!(epoch % 100))
@@ -236,7 +231,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
             }
         }
-        #pragma omp barrier
     }
 
     freeTSet(NUMPAT, tSet);
