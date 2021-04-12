@@ -35,7 +35,6 @@
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
-#include <omp.h>
 #include "common.h"
 
 int total;
@@ -146,7 +145,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 int p = ranpat[np];
 
-                #pragma omp for
                 for (int j = 0; j < numHid; j++) // compute hidden unit activations
                 {
                     float SumH = 0.0;
@@ -157,7 +155,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
 
-                #pragma omp for reduction(+: BError)
                 for (int k = 0; k < numOut; k++) // compute output unit activations and errors
                 {
                     float SumO = 0.0;
@@ -170,7 +167,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
                 }
 
-                #pragma omp for nowait
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
                     float SumDOW = 0.0;
@@ -185,7 +181,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     }
                 }
 
-                #pragma omp for
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
                     for (int j = 0; j < numHid; j++)
@@ -195,7 +190,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            #pragma omp for nowait
             for (int j = 0; j < numHid; j++) // update weights WeightIH
             {
                 for (int i = 0; i < numIn; i++)
@@ -204,7 +198,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            #pragma omp for nowait
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
                 for (int j = 0; j < numHid; j++)
@@ -214,12 +207,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
             }
 
-            #pragma omp single
             Error += BError; // We only want to update Error once per iteration
         }
 
 
-        #pragma omp single
         {
             Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
             if (!(epoch % 100))
