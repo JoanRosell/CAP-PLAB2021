@@ -7,17 +7,19 @@
 #   (int) numHid: number of hidden neurons
 #   (int) numOut: number of output neurons
 #
-# Identify assigned node
-hostname
-echo
-lscpu
-echo
 
 # Load required modules
-module add cmake/3.13.4
+module unload gcc
+module load gcc/8.2.0
+module load cmake/3.13.4
+module load openmpi/3.0.0
+module load tau/2.29
 
 # Compile the source code into an executable
-export CC=/soft/gcc-10.2.0/bin/gcc
+export TAU_MAKEFILE=/soft/tau-2.29/x86_64/lib/Makefile.tau-mpi
+export TAU_OPTIONS=-optCompInst
+export CC=/soft/tau-2.29/x86_64/bin/tau_cc.sh
+
 ./compile.sh
 
 # Parse parameters
@@ -28,5 +30,6 @@ numHid=$4
 numOut=$5
 
 # Execute
-perf stat -d ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
-perf record -o $filename.data ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut 2>&1
+mpirun -n 1 ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut
+pprof
+
