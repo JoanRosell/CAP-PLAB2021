@@ -9,4 +9,4 @@ set_property(TARGET CAP-PLAB2021.exe PROPERTY C_STANDARD 99)
 
 find_package(MPI REQUIRED)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Ofast -g3 -Wall")
-target_link_libraries(CAP-PLAB2021.exe PUBLIC m MPI::MPI_C);
+target_link_libraries(CAP-PLAB2021.exe PUBLIC m MPI::MPI_C)
