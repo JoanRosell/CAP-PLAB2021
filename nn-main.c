@@ -35,6 +35,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
+#include <mpi.h>
 #include "common.h"
 
 int total;
@@ -299,16 +300,178 @@ int main(int argc, char** argv)
     const int numIn  = (argc > 2) ? atoi(argv[2]) : NUMIN;
     const int numHid = (argc > 3) ? atoi(argv[3]) : NUMHID;
     const int numOut = (argc > 4) ? atoi(argv[4]) : NUMOUT;
+    int my_rank, nprocs;
+    MPI_Status status;
 
     clock_t start = clock();
 
-    trainN(epochs, numIn, numHid, numOut);
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    
+    //trainN(epochs, numIn, numHid, numOut);
+    char** tSet;
+
+    float DeltaWeightIH[numHid][numIn], DeltaWeightHO[numOut][numHid];
+    float Error, BError, eta = 0.3, alpha = 0.5, smallwt = 0.22;
+    int   ranpat[NUMPAT];
+    float Hidden[numHid], Output[numOut], DeltaO[numOut], DeltaH[numHid];
+    float inv_WeightHO[NUMHID][NUMOUT];
+
+    if ((tSet = loadPatternSet(NUMPAT, "optdigits.tra", 1)) == NULL)
+    {
+        printf("Loading Patterns: Error!!\n");
+        exit(-1);
+    }
+
+    uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
+    for (size_t i = 0; i < NUMPAT; i++)
+    {
+        for (size_t j = 0; j < 1024; j++)
+        {
+            tSet_msk[i * 1024 + j] = tSet[i][j] * 0xFFFFFFFF;
+        }
+    }
+
+    for (int i = 0; i < numHid; i++)
+    {
+        for (int j = 0; j < numIn; j++)
+        {
+            WeightIH[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
+            DeltaWeightIH[i][j] = 0.0;
+        }
+    }
+
+    for (int i = 0; i < numOut; i++)
+    {
+        for (int j = 0; j < numHid; j++)
+        {
+            WeightHO[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
+            DeltaWeightHO[i][j] = 0.0;
+            inv_WeightHO[j][i]  = WeightHO[i][j];
+        }
+    }
+
+    Error = 10;
+    for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
+    {
+        {
+            for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
+            {
+                ranpat[p] = p;
+            }
+            for (int p = 0; p < NUMPAT; p++)
+            {
+                int x  = rando();
+                int np = (x * x) % NUMPAT;
+                int op = ranpat[p];
+                ranpat[p]  = ranpat[np];
+                ranpat[np] = op;
+            }
+
+            printf(".");
+            fflush(stdout);
+        }
+
+        Error = 0.0;
+        for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
+        {
+            BError = 0.0;
+            for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
+            {
+                int p = ranpat[np];
+
+                for (int j = 0; j < numHid; j++) // compute hidden unit activations
+                {
+                    float SumH = 0.0;
+                    for (int i = 0; i < numIn; i++)
+                    {
+                        SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
+                    }
+                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                }
+
+                for (int k = 0; k < numOut; k++) // compute output unit activations and errors
+                {
+                    float SumO = 0.0;
+                    for (int j = 0; j < numHid; j++)
+                    {
+                        SumO += Hidden[j] * WeightHO[k][j];
+                    }
+                    Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
+                    BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
+                    DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
+                }
+
+                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+                {
+                    float SumDOW = 0.0;
+                    for (int k = 0; k < numOut; k++)
+                    {
+                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
+                    }
+                    DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
+                    for (int i = 0; i < numIn; i++)
+                    {
+                        DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
+                    }
+                }
+
+                for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
+                {
+                    for (int j = 0; j < numHid; j++)
+                    {
+                        DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
+                    }
+                }
+            }
+
+            for (int j = 0; j < numHid; j++) // update weights WeightIH
+            {
+                for (int i = 0; i < numIn; i++)
+                {
+                    WeightIH[j][i] += DeltaWeightIH[j][i];
+                }
+            }
+
+            for (int k = 0; k < numOut; k++) // update weights WeightHO
+            {
+                for (int j = 0; j < numHid; j++)
+                {
+                    WeightHO[k][j]    += DeltaWeightHO[k][j];
+                    inv_WeightHO[j][k] = WeightHO[k][j];
+                }
+            }
+
+            Error += BError; // We only want to update Error once per iteration
+        }
+
+
+        {
+            Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
+            if (!(epoch % 100))
+            {
+                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+            }
+            if (Error < 0.0004)
+            {
+                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+            }
+        }
+    }
+
+    freeTSet(NUMPAT, tSet);
+    free(tSet_msk);
+    MPI_Finalize();
+
+    printf("END TRAINING\n");
+
     runN(numIn, numHid, numOut);
 
     clock_t end = clock();
     printf("\n\nGoodbye! (%f sec)\n\n", (end - start) / (1.0 * CLOCKS_PER_SEC));
 
-    return 1;
+    return 0;
 }
 
 /*******************************************************************************/
