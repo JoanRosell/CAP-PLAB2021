@@ -136,6 +136,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             fflush(stdout);
         }
 
+
+	size_t batch_count = NUMPAT / BSIZE;
+	size_t extra_batches = batch_count % nproc;
+
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
         {
@@ -301,14 +305,14 @@ int main(int argc, char** argv)
     const int numHid = (argc > 3) ? atoi(argv[3]) : NUMHID;
     const int numOut = (argc > 4) ? atoi(argv[4]) : NUMOUT;
     int my_rank, nprocs;
-    MPI_Status status;
+    //MPI_Status status;
 
     clock_t start = clock();
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-    
+
     //trainN(epochs, numIn, numHid, numOut);
     char** tSet;
 
@@ -373,8 +377,11 @@ int main(int argc, char** argv)
             fflush(stdout);
         }
 
+	size_t batch_count = NUMPAT / BSIZE;
+        size_t extra_batches = batch_count % nproc;
+
         Error = 0.0;
-        for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
+        for (int nb = my_rank * (batch_count / nprocs); nb <(batch_count / nprocs) * (my_rank + 1); nb++) // repeat for all batches
         {
             BError = 0.0;
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
@@ -433,17 +440,32 @@ int main(int argc, char** argv)
                     WeightIH[j][i] += DeltaWeightIH[j][i];
                 }
             }
+	    MPI_AllReduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+	    for(int j = 0; j < numHid; j++){
+	        for(int i = 0; i < numIn; i++){
+		    WeightIH[j][i] /= nprocs;
+		}
+	    }
 
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
                 for (int j = 0; j < numHid; j++)
                 {
                     WeightHO[k][j]    += DeltaWeightHO[k][j];
-                    inv_WeightHO[j][k] = WeightHO[k][j];
+                    //inv_WeightHO[j][k] = WeightHO[k][j];
                 }
             }
 
-            Error += BError; // We only want to update Error once per iteration
+    	    MPI_AllReduce(MPI_IN_PLACE, WeightHO, numOut*numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+	    for(int(k = 0; k < numOut; k++){
+	    	for(int j = 0; j < numHid; j++){
+		    WeightHO[k][j] /= nprocs;
+		    inv_WeightHO[j][k] = WeightHO[k][j];
+		}
+	    }
+
+	    MPI_AllReduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            //Error += BError; // We only want to update Error once per iteration
         }
 
 
