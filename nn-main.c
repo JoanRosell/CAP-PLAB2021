@@ -70,168 +70,168 @@ float f_and(float val, uint32_t msk)
     return val;
 }
 
-void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
-{
-    char** tSet;
-
-    float DeltaWeightIH[numHid][numIn], DeltaWeightHO[numOut][numHid];
-    float Error, BError, eta = 0.3, alpha = 0.5, smallwt = 0.22;
-    int   ranpat[NUMPAT];
-    float Hidden[numHid], Output[numOut], DeltaO[numOut], DeltaH[numHid];
-    float SumO, SumH, SumDOW;
-    float inv_WeightHO[NUMHID][NUMOUT];
-
-    if ((tSet = loadPatternSet(NUMPAT, "optdigits.tra", 1)) == NULL)
-    {
-        printf("Loading Patterns: Error!!\n");
-        exit(-1);
-    }
-
-    uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
-
-    for (size_t i = 0; i < NUMPAT; i++)
-    {
-        for (size_t j = 0; j < 1024; j++)
-        {
-            tSet_msk[i * 1024 + j] = tSet[i][j] * 0xFFFFFFFF;
-        }
-    }
-
-    for (int i = 0; i < numHid; i++)
-    {
-        for (int j = 0; j < numIn; j++)
-        {
-            WeightIH[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
-            DeltaWeightIH[i][j] = 0.0;
-        }
-    }
-
-    for (int i = 0; i < numOut; i++)
-    {
-        for (int j = 0; j < numHid; j++)
-        {
-            WeightHO[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
-            DeltaWeightHO[i][j] = 0.0;
-            inv_WeightHO[j][i]  = WeightHO[i][j];
-        }
-    }
-
-    Error = 10;
-    for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
-    {
-        {
-            for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
-            {
-                ranpat[p] = p;
-            }
-            for (int p = 0; p < NUMPAT; p++)
-            {
-                int x  = rando();
-                int np = (x * x) % NUMPAT;
-                int op = ranpat[p];
-                ranpat[p]  = ranpat[np];
-                ranpat[np] = op;
-            }
-
-            printf(".");
-            fflush(stdout);
-        }
-
-
-        size_t batch_count   = NUMPAT / BSIZE;
-        size_t extra_batches = batch_count % nproc;
-
-        Error = 0.0;
-        for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
-        {
-            BError = 0.0;
-            for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
-            {
-                int p = ranpat[np];
-
-                for (int j = 0; j < numHid; j++) // compute hidden unit activations
-                {
-                    float SumH = 0.0;
-                    for (int i = 0; i < numIn; i++)
-                    {
-                        SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
-                    }
-                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
-                }
-
-                for (int k = 0; k < numOut; k++) // compute output unit activations and errors
-                {
-                    float SumO = 0.0;
-                    for (int j = 0; j < numHid; j++)
-                    {
-                        SumO += Hidden[j] * WeightHO[k][j];
-                    }
-                    Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
-                    BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
-                    DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
-                }
-
-                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
-                {
-                    float SumDOW = 0.0;
-                    for (int k = 0; k < numOut; k++)
-                    {
-                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
-                    }
-                    DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
-                    for (int i = 0; i < numIn; i++)
-                    {
-                        DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
-                    }
-                }
-
-                for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
-                {
-                    for (int j = 0; j < numHid; j++)
-                    {
-                        DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
-                    }
-                }
-            }
-
-            for (int j = 0; j < numHid; j++) // update weights WeightIH
-            {
-                for (int i = 0; i < numIn; i++)
-                {
-                    WeightIH[j][i] += DeltaWeightIH[j][i];
-                }
-            }
-
-            for (int k = 0; k < numOut; k++) // update weights WeightHO
-            {
-                for (int j = 0; j < numHid; j++)
-                {
-                    WeightHO[k][j]    += DeltaWeightHO[k][j];
-                    inv_WeightHO[j][k] = WeightHO[k][j];
-                }
-            }
-
-            Error += BError; // We only want to update Error once per iteration
-        }
-
-
-        {
-            Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
-            if (!(epoch % 100))
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-            }
-            if (Error < 0.0004)
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-            }
-        }
-    }
-
-    freeTSet(NUMPAT, tSet);
-    free(tSet_msk);
-    printf("END TRAINING\n");
-}
+//void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
+//{
+//    char** tSet;
+//
+//    float DeltaWeightIH[numHid][numIn], DeltaWeightHO[numOut][numHid];
+//    float Error, BError, eta = 0.3, alpha = 0.5, smallwt = 0.22;
+//    int   ranpat[NUMPAT];
+//    float Hidden[numHid], Output[numOut], DeltaO[numOut], DeltaH[numHid];
+//    float SumO, SumH, SumDOW;
+//    float inv_WeightHO[NUMHID][NUMOUT];
+//
+//    if ((tSet = loadPatternSet(NUMPAT, "optdigits.tra", 1)) == NULL)
+//    {
+//        printf("Loading Patterns: Error!!\n");
+//        exit(-1);
+//    }
+//
+//    uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
+//
+//    for (size_t i = 0; i < NUMPAT; i++)
+//    {
+//        for (size_t j = 0; j < 1024; j++)
+//        {
+//            tSet_msk[i * 1024 + j] = tSet[i][j] * 0xFFFFFFFF;
+//        }
+//    }
+//
+//    for (int i = 0; i < numHid; i++)
+//    {
+//        for (int j = 0; j < numIn; j++)
+//        {
+//            WeightIH[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
+//            DeltaWeightIH[i][j] = 0.0;
+//        }
+//    }
+//
+//    for (int i = 0; i < numOut; i++)
+//    {
+//        for (int j = 0; j < numHid; j++)
+//        {
+//            WeightHO[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
+//            DeltaWeightHO[i][j] = 0.0;
+//            inv_WeightHO[j][i]  = WeightHO[i][j];
+//        }
+//    }
+//
+//    Error = 10;
+//    for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
+//    {
+//        {
+//            for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
+//            {
+//                ranpat[p] = p;
+//            }
+//            for (int p = 0; p < NUMPAT; p++)
+//            {
+//                int x  = rando();
+//                int np = (x * x) % NUMPAT;
+//                int op = ranpat[p];
+//                ranpat[p]  = ranpat[np];
+//                ranpat[np] = op;
+//            }
+//
+//            printf(".");
+//            fflush(stdout);
+//        }
+//
+//
+//        size_t batch_count   = NUMPAT / BSIZE;
+//        size_t extra_batches = batch_count % nproc;
+//
+//        Error = 0.0;
+//        for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
+//        {
+//            BError = 0.0;
+//            for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
+//            {
+//                int p = ranpat[np];
+//
+//                for (int j = 0; j < numHid; j++) // compute hidden unit activations
+//                {
+//                    float SumH = 0.0;
+//                    for (int i = 0; i < numIn; i++)
+//                    {
+//                        SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
+//                    }
+//                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+//                }
+//
+//                for (int k = 0; k < numOut; k++) // compute output unit activations and errors
+//                {
+//                    float SumO = 0.0;
+//                    for (int j = 0; j < numHid; j++)
+//                    {
+//                        SumO += Hidden[j] * WeightHO[k][j];
+//                    }
+//                    Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
+//                    BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
+//                    DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
+//                }
+//
+//                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+//                {
+//                    float SumDOW = 0.0;
+//                    for (int k = 0; k < numOut; k++)
+//                    {
+//                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
+//                    }
+//                    DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
+//                    for (int i = 0; i < numIn; i++)
+//                    {
+//                        DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
+//                    }
+//                }
+//
+//                for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
+//                {
+//                    for (int j = 0; j < numHid; j++)
+//                    {
+//                        DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
+//                    }
+//                }
+//            }
+//
+//            for (int j = 0; j < numHid; j++) // update weights WeightIH
+//            {
+//                for (int i = 0; i < numIn; i++)
+//                {
+//                    WeightIH[j][i] += DeltaWeightIH[j][i];
+//                }
+//            }
+//
+//            for (int k = 0; k < numOut; k++) // update weights WeightHO
+//            {
+//                for (int j = 0; j < numHid; j++)
+//                {
+//                    WeightHO[k][j]    += DeltaWeightHO[k][j];
+//                    inv_WeightHO[j][k] = WeightHO[k][j];
+//                }
+//            }
+//
+//            Error += BError; // We only want to update Error once per iteration
+//        }
+//
+//
+//        {
+//            Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
+//            if (!(epoch % 100))
+//            {
+//                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+//            }
+//            if (Error < 0.0004)
+//            {
+//                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+//            }
+//        }
+//    }
+//
+//    freeTSet(NUMPAT, tSet);
+//    free(tSet_msk);
+//    printf("END TRAINING\n");
+//}
 
 void printRecognized(int p, float Output[], const int numOut)
 {
@@ -358,10 +358,29 @@ int main(int argc, char** argv)
         }
     }
 
+    size_t batch_count   = NUMPAT / BSIZE;
+    size_t extra_batches = batch_count % nprocs;
+    size_t batches_per_proc = batch_count / nprocs;
+
+    if (my_rank == 0)
+    {
+        printf("\n\n\t---------- START OF PROGRAM OUTPUT --------------\n");
+        printf("Starting training with:\n\tBatches: %d\n\tProcesses: %d\n\tBatches per process: %d\n", batch_count, nprocs, batches_per_proc);
+        printf("\nBatch assignment:\n");
+        for (size_t i = 0; i < nprocs; i++)
+        {
+            int start = i * batches_per_proc;
+            int end = (i + 1) * batches_per_proc;
+            printf("\tP%d: %d to %d\n", i, start, end - 1);
+            fflush(stdout);
+        }
+        printf("\n");
+    }
+
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
-        for (int p = 0; p < NUMPAT; p++)                            // randomize order of individuals
+        for (int p = 0; p < NUMPAT; p++)
         {
             ranpat[p] = p;
         }
@@ -375,14 +394,8 @@ int main(int argc, char** argv)
             ranpat[np] = op;
         }
 
-        printf(".");
-        fflush(stdout);
-
-        size_t batch_count   = NUMPAT / BSIZE;
-        size_t extra_batches = batch_count % nprocs;
-
         Error = 0.0;
-        for (int nb = my_rank * (batch_count / nprocs); nb < (batch_count / nprocs) * (my_rank + 1); nb++) // repeat for all batches
+        for (int nb = my_rank * batches_per_proc; nb < batches_per_proc * (my_rank + 1); nb++) // repeat for all batches
         {
             BError = 0.0;
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
@@ -442,16 +455,7 @@ int main(int argc, char** argv)
                     WeightIH[j][i] += DeltaWeightIH[j][i];
                 }
             }
-
-            MPI_AllReduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-            for (int j = 0; j < numHid; j++)
-            {
-                for (int i = 0; i < numIn; i++)
-                {
-                    WeightIH[j][i] /= nprocs;
-                }
-            }
-
+            
             // Update WeightHO
             for (int k = 0; k < numOut; k++)
             {
@@ -461,7 +465,17 @@ int main(int argc, char** argv)
                 }
             }
 
-            MPI_AllReduce(MPI_IN_PLACE, WeightHO, numOut * numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, WeightHO, numOut * numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+
+            for (int j = 0; j < numHid; j++)
+            {
+                for (int i = 0; i < numIn; i++)
+                {
+                    WeightIH[j][i] /= nprocs;
+                }
+            }
+
             for (int k = 0; k < numOut; k++)
             {
                 for (int j = 0; j < numHid; j++)
@@ -471,18 +485,22 @@ int main(int argc, char** argv)
                 }
             }
 
-            MPI_AllReduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            BError /= nprocs;
+            MPI_Allreduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
         }
 
-        Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
-        if (!(epoch % 100))
+        if (my_rank == 0)
         {
-            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-        }
+            Error /= ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
+            if (!(epoch % 100))
+            {
+                printf("\nEpoch %-5d: Error = %f\n", epoch, Error);
+            }
 
-        if (Error < 0.0004)
-        {
-            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+            if (Error < 0.0004)
+            {
+                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+            }
         }
     }
 
