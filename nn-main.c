@@ -62,11 +62,11 @@ void freeTSet(int np, char** tset)
 
 float f_and(float val, uint32_t msk)
 {
-    uint32_t tmp;
-
+    uint32_t tmp = 0;
     memcpy(&tmp, &val, 4);
     tmp &= msk;
     memcpy(&val, &tmp, 4);
+
     return val;
 }
 
@@ -88,6 +88,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     }
 
     uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
+
     for (size_t i = 0; i < NUMPAT; i++)
     {
         for (size_t j = 0; j < 1024; j++)
@@ -137,8 +138,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
 
 
-	size_t batch_count = NUMPAT / BSIZE;
-	size_t extra_batches = batch_count % nproc;
+        size_t batch_count   = NUMPAT / BSIZE;
+        size_t extra_batches = batch_count % nproc;
 
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
@@ -301,10 +302,10 @@ int main(int argc, char** argv)
 {
     // Read parameters from CLI
     const int epochs = (argc > 1) ? atoi(argv[1]) : 1000000;
-    const int numIn  = (argc > 2) ? atoi(argv[2]) : NUMIN;
+    const int numIn = (argc > 2) ? atoi(argv[2]) : NUMIN;
     const int numHid = (argc > 3) ? atoi(argv[3]) : NUMHID;
     const int numOut = (argc > 4) ? atoi(argv[4]) : NUMOUT;
-    int my_rank, nprocs;
+    int       my_rank, nprocs;
     //MPI_Status status;
 
     clock_t start = clock();
@@ -329,6 +330,7 @@ int main(int argc, char** argv)
     }
 
     uint32_t* tSet_msk = malloc(sizeof(uint32_t) * NUMPAT * 1024);
+
     for (size_t i = 0; i < NUMPAT; i++)
     {
         for (size_t j = 0; j < 1024; j++)
@@ -359,29 +361,28 @@ int main(int argc, char** argv)
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
+        for (int p = 0; p < NUMPAT; p++)                            // randomize order of individuals
         {
-            for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
-            {
-                ranpat[p] = p;
-            }
-            for (int p = 0; p < NUMPAT; p++)
-            {
-                int x  = rando();
-                int np = (x * x) % NUMPAT;
-                int op = ranpat[p];
-                ranpat[p]  = ranpat[np];
-                ranpat[np] = op;
-            }
-
-            printf(".");
-            fflush(stdout);
+            ranpat[p] = p;
         }
 
-	size_t batch_count = NUMPAT / BSIZE;
-        size_t extra_batches = batch_count % nproc;
+        for (int p = 0; p < NUMPAT; p++)
+        {
+            int x  = rando();
+            int np = (x * x) % NUMPAT;
+            int op = ranpat[p];
+            ranpat[p]  = ranpat[np];
+            ranpat[np] = op;
+        }
+
+        printf(".");
+        fflush(stdout);
+
+        size_t batch_count   = NUMPAT / BSIZE;
+        size_t extra_batches = batch_count % nprocs;
 
         Error = 0.0;
-        for (int nb = my_rank * (batch_count / nprocs); nb <(batch_count / nprocs) * (my_rank + 1); nb++) // repeat for all batches
+        for (int nb = my_rank * (batch_count / nprocs); nb < (batch_count / nprocs) * (my_rank + 1); nb++) // repeat for all batches
         {
             BError = 0.0;
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
@@ -433,52 +434,55 @@ int main(int argc, char** argv)
                 }
             }
 
-            for (int j = 0; j < numHid; j++) // update weights WeightIH
+            // Update WeightIH
+            for (int j = 0; j < numHid; j++)
             {
                 for (int i = 0; i < numIn; i++)
                 {
                     WeightIH[j][i] += DeltaWeightIH[j][i];
                 }
             }
-	    MPI_AllReduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-	    for(int j = 0; j < numHid; j++){
-	        for(int i = 0; i < numIn; i++){
-		    WeightIH[j][i] /= nprocs;
-		}
-	    }
 
-            for (int k = 0; k < numOut; k++) // update weights WeightHO
+            MPI_AllReduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            for (int j = 0; j < numHid; j++)
             {
-                for (int j = 0; j < numHid; j++)
+                for (int i = 0; i < numIn; i++)
                 {
-                    WeightHO[k][j]    += DeltaWeightHO[k][j];
-                    //inv_WeightHO[j][k] = WeightHO[k][j];
+                    WeightIH[j][i] /= nprocs;
                 }
             }
 
-    	    MPI_AllReduce(MPI_IN_PLACE, WeightHO, numOut*numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-	    for(int(k = 0; k < numOut; k++){
-	    	for(int j = 0; j < numHid; j++){
-		    WeightHO[k][j] /= nprocs;
-		    inv_WeightHO[j][k] = WeightHO[k][j];
-		}
-	    }
+            // Update WeightHO
+            for (int k = 0; k < numOut; k++)
+            {
+                for (int j = 0; j < numHid; j++)
+                {
+                    WeightHO[k][j] += DeltaWeightHO[k][j];
+                }
+            }
 
-	    MPI_AllReduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-            //Error += BError; // We only want to update Error once per iteration
+            MPI_AllReduce(MPI_IN_PLACE, WeightHO, numOut * numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            for (int k = 0; k < numOut; k++)
+            {
+                for (int j = 0; j < numHid; j++)
+                {
+                    WeightHO[k][j]    /= nprocs;
+                    inv_WeightHO[j][k] = WeightHO[k][j];
+                }
+            }
+
+            MPI_AllReduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
         }
 
-
+        Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
+        if (!(epoch % 100))
         {
-            Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
-            if (!(epoch % 100))
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-            }
-            if (Error < 0.0004)
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-            }
+            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+        }
+
+        if (Error < 0.0004)
+        {
+            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
         }
     }
 
@@ -491,6 +495,7 @@ int main(int argc, char** argv)
     runN(numIn, numHid, numOut);
 
     clock_t end = clock();
+
     printf("\n\nGoodbye! (%f sec)\n\n", (end - start) / (1.0 * CLOCKS_PER_SEC));
 
     return 0;
