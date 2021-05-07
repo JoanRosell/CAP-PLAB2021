@@ -35,6 +35,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
+//#include <mpi/mpi.h>
 #include <mpi.h>
 #include "common.h"
 
@@ -365,9 +366,9 @@ int main(int argc, char** argv)
     if (my_rank == 0)
     {
         printf("\n\n\t---------- START OF PROGRAM OUTPUT --------------\n");
-        printf("Starting training with:\n\tBatches: %d\n\tProcesses: %d\n\tBatches per process: %d\n", batch_count, nprocs, batches_per_proc);
+        printf("Starting training with:\n\tBatches: %lu\n\tProcesses: %d\n\tBatches per process: %lu\n", batch_count, nprocs, batches_per_proc);
         printf("\nBatch assignment:\n");
-        for (size_t i = 0; i < nprocs; i++)
+        for (int i = 0; i < nprocs; i++)
         {
             int start = i * batches_per_proc;
             int end = (i + 1) * batches_per_proc;
@@ -378,7 +379,7 @@ int main(int argc, char** argv)
     }
 
     Error = 10;
-    for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
+    for (int epoch = 0; epoch < epochs; epoch++) // iterate weight updates
     {
         for (int p = 0; p < NUMPAT; p++)
         {
@@ -489,17 +490,17 @@ int main(int argc, char** argv)
             MPI_Allreduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
         }
 
+        Error /= ((NUMPAT / (float) BSIZE) * BSIZE); //mean error for the last epoch
+        if (Error < 0.0004)
+        {
+            break;
+        }
+
         if (my_rank == 0)
         {
-            Error /= ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
             if (!(epoch % 100))
             {
                 printf("\nEpoch %-5d: Error = %f\n", epoch, Error);
-            }
-
-            if (Error < 0.0004)
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
             }
         }
     }
