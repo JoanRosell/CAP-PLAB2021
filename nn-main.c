@@ -463,31 +463,33 @@ int main(int argc, char** argv)
                 for (int j = 0; j < numHid; j++)
                 {
                     WeightHO[k][j] += DeltaWeightHO[k][j];
-                }
-            }
-
-            MPI_Allreduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-            MPI_Allreduce(MPI_IN_PLACE, WeightHO, numOut * numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-
-            for (int j = 0; j < numHid; j++)
-            {
-                for (int i = 0; i < numIn; i++)
-                {
-                    WeightIH[j][i] /= nprocs;
-                }
-            }
-
-            for (int k = 0; k < numOut; k++)
-            {
-                for (int j = 0; j < numHid; j++)
-                {
-                    WeightHO[k][j]    /= nprocs;
                     inv_WeightHO[j][k] = WeightHO[k][j];
                 }
             }
 
-            BError /= nprocs;
-            MPI_Allreduce(&BError, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            Error += BError;
+        }
+
+        MPI_Allreduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, WeightHO, numOut * numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+
+        MPI_Allreduce(MPI_IN_PLACE, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        Error /= nprocs;
+
+        for (int j = 0; j < numHid; j++)
+        {
+            for (int i = 0; i < numIn; i++)
+            {
+                WeightIH[j][i] /= nprocs;
+            }
+        }
+
+        for (int k = 0; k < numOut; k++)
+        {
+            for (int j = 0; j < numHid; j++)
+            {
+                WeightHO[k][j] /= nprocs;
+            }
         }
 
         Error /= ((NUMPAT / (float) BSIZE) * BSIZE); //mean error for the last epoch
