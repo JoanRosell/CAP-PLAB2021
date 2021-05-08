@@ -15,12 +15,18 @@ module load cmake/3.13.4
 module load openmpi/3.0.0
 module load tau/2.29
 
-# Compile the source code into an executable
+# TAU exports
 export TAU_MAKEFILE=/soft/tau-2.29/x86_64/lib/Makefile.tau-mpi
 export TAU_OPTIONS=-optCompInst
-export CC=/soft/tau-2.29/x86_64/bin/tau_cc.sh
+#export TAU_TRACE=1
 
-rm -rf build/* # Remove the old build system
+# Select the compilation variable for CMake
+export CC=$(which tau_cc.sh)
+
+# Remove the old build system
+rm -rf build/* 
+
+# Compile using CMake
 ./compile.sh
 
 # Parse parameters
@@ -32,5 +38,9 @@ numOut=$5
 
 # Execute
 mpirun ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut
+
+# Process the trace files
+#tau_treemerge.pl
+#tau2slog2 tau.trc tau.edf -o tau.slog2
 pprof
 

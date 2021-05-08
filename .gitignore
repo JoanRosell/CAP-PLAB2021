@@ -65,3 +65,6 @@ cmake-build-*/
 
 # ccls (Language Server Client for NeoVim)
 .ccls-*
+
+# TAU files
+*.slog2
