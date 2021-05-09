@@ -46,6 +46,8 @@ mpirun ./build/CAP-PLAB2021.exe $TRACE_EPOCHS $numIn $numHid $numOut
 tau_treemerge.pl
 tau2slog2 tau.trc tau.edf -o $filename.slog2
 
+# Remove unnecesary trace and event files
+rm *.trc *.edf
 
 # 2. Non-traced version
 # Select the compilation variable for CMake, in this case use the standard MPI wrappers
