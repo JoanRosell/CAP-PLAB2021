@@ -26,7 +26,7 @@ numHid=$4
 numOut=$5
 
 # Tracing constants
-TRACE_EPOCHS=5
+TRACE_EPOCHS=1
 
 # TAU exports
 export TAU_MAKEFILE=/soft/tau-2.29/x86_64/lib/Makefile.tau-mpi
@@ -41,8 +41,10 @@ export CC=$(which tau_cc.sh)
 rm -rf build/* 
 
 # Compile, run and process the output files
+echo "Tracing with TAU..."
+echo
 ./compile.sh
-mpirun ./build/CAP-PLAB2021.exe $TRACE_EPOCHS $numIn $numHid $numOut
+mpirun ./build/CAP-PLAB2021.exe $TRACE_EPOCHS $numIn $numHid $numOut > /dev/null
 tau_treemerge.pl
 tau2slog2 tau.trc tau.edf -o $filename.slog2
 
@@ -57,6 +59,11 @@ export CC=$(which mpicc)
 rm -rf build/* 
 
 # Compile and run
+echo "Running standard version..."
+echo
 ./compile.sh
-mpirun ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut
+echo
+
+mpirun ./build/CAP-PLAB2021.exe $epochs $numIn $numHid $numOut > out_tmp.out
+tail out_tmp.out | egrep -w 'Epochs|sec|encerts'
 

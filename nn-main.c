@@ -246,19 +246,19 @@ void printRecognized(int p, float Output[], const int numOut)
             imax = i;
         }
     }
-    printf("El patró %d sembla un %c\t i és un %d", p, '0' + imax, Validation[p]);
+    //printf("El patró %d sembla un %c\t i és un %d", p, '0' + imax, Validation[p]);
     if (imax == Validation[p])
     {
         total++;
     }
     for (int k = 0; k < numOut; k++)
     {
-        printf("\t%f\t", Output[k]);
+        //printf("\t%f\t", Output[k]);
     }
-    printf("\n");
+    //printf("\n");
 }
 
-void runN(const int numIn, const int numHid, const int numOut)
+void runN(int my_rank, const int numIn, const int numHid, const int numOut)
 {
     char** rSet;
     char*  fname[NUMRPAT];
@@ -295,7 +295,8 @@ void runN(const int numIn, const int numHid, const int numOut)
         printRecognized(p, Output, numOut);
     }
 
-    printf("\nTotal encerts = %d\n", total);
+    if (my_rank == 0)
+        printf("\nTotal encerts = %d\n", total);
 
     freeTSet(NUMRPAT, rSet);
 }
@@ -433,7 +434,7 @@ int main(int argc, char** argv)
     }
 
     Error = 10;
-    for (int epoch = 0; epoch < epochs; epoch++) // iterate weight updates
+    for (size_t epoch = 0; epoch < epochs; epoch++) // iterate weight updates
     {
         for (int p = 0; p < NUMPAT; p++)
         {
@@ -523,12 +524,8 @@ int main(int argc, char** argv)
 
             Error += BError;
         }
-
         MPI_Allreduce(MPI_IN_PLACE, WeightIH, numHid * numIn, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(MPI_IN_PLACE, WeightHO, numOut * numHid, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-
-        MPI_Allreduce(MPI_IN_PLACE, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-        Error /= nprocs;
 
         for (int j = 0; j < numHid; j++)
         {
@@ -546,9 +543,17 @@ int main(int argc, char** argv)
             }
         }
 
+        MPI_Allreduce(MPI_IN_PLACE, &Error, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        Error /= nprocs;
+
         Error /= ((NUMPAT / (float) BSIZE) * BSIZE); //mean error for the last epoch
         if (Error < 0.0004)
         {
+
+            if (my_rank == 0)
+            {
+                printf("\nEpochs needed: %lu", epoch);
+            }
             break;
         }
 
@@ -565,13 +570,15 @@ int main(int argc, char** argv)
     free(tSet_msk);
     MPI_Finalize();
 
-    printf("END TRAINING\n");
+    if (my_rank == 0)
+        printf("\nEND TRAINING\n");
 
-    runN(numIn, numHid, numOut);
+    runN(my_rank, numIn, numHid, numOut);
 
     clock_t end = clock();
 
-    printf("\n\nGoodbye! (%f sec)\n\n", (end - start) / (1.0 * CLOCKS_PER_SEC));
+    if (my_rank == 0)
+        printf("\n\nGoodbye! (%f sec)\n\n", (end - start) / (1.0 * CLOCKS_PER_SEC));
 
     return 0;
 }
