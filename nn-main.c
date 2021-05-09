@@ -35,8 +35,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
-#include <mpi/mpi.h>
-//#include <mpi.h>
+//#include <mpi/mpi.h>
+#include <mpi.h>
 #include "common.h"
 
 int total;
@@ -300,7 +300,8 @@ void runN(const int numIn, const int numHid, const int numOut)
     freeTSet(NUMRPAT, rSet);
 }
 
-struct batch_chunk {
+struct batch_chunk
+{
     size_t start;
     size_t end;
 };
@@ -321,7 +322,7 @@ int main(int argc, char** argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
-    //trainN(epochs, numIn, numHid, numOut);
+    // trainN(epochs, numIn, numHid, numOut);
     char** tSet;
 
     float DeltaWeightIH[numHid][numIn], DeltaWeightHO[numOut][numHid];
@@ -365,10 +366,11 @@ int main(int argc, char** argv)
         }
     }
 
-    size_t  batch_count      = NUMPAT / BSIZE;
-    size_t  extra_batches    = batch_count % nprocs;
-    size_t  batches_per_proc = batch_count / nprocs;
+    size_t batch_count      = NUMPAT / BSIZE;
+    size_t extra_batches    = batch_count % nprocs;
+    size_t batches_per_proc = batch_count / nprocs;
     struct batch_chunk* tmp = malloc(sizeof(*tmp) * nprocs);
+
     if (tmp == NULL)
     {
         perror("malloc");
@@ -377,12 +379,13 @@ int main(int argc, char** argv)
 
     // This array holds indexes to the start and end of the batches assigned to each process.
     struct batch_chunk* assigned_chunks = tmp;
+
     memset(assigned_chunks, 0, sizeof(*assigned_chunks) * nprocs);
 
     for (size_t i = 0; i < nprocs; i++)
     {
         assigned_chunks[i].start = batches_per_proc * i;
-        assigned_chunks[i].end = batches_per_proc * (i + 1);
+        assigned_chunks[i].end   = batches_per_proc * (i + 1);
     }
 
     if (my_rank == 0)
@@ -392,7 +395,7 @@ int main(int argc, char** argv)
         printf("\nBatches assigned before load-balancing:");
         for (size_t i = 0; i < nprocs; i++)
         {
-            printf("\n\tProcess %lu: %lu-%lu", i, assigned_chunks[i].start, assigned_chunks[i].end - 1);
+            printf("\n\tP%lu: %lu-%lu", i, assigned_chunks[i].start, assigned_chunks[i].end - 1);
         }
     }
 
@@ -401,15 +404,16 @@ int main(int argc, char** argv)
     {
         printf("\n\nAssigning %lu extra batches", extra_batches);
     }
-    size_t i = 0; 
+    size_t i         = 0;
     size_t remaining = extra_batches;
+
     while (remaining)
     {
         assigned_chunks[i].end += 1;
         for (size_t j = i + 1; j < nprocs; j++)
         {
             assigned_chunks[j].start += 1;
-            assigned_chunks[j].end += 1;
+            assigned_chunks[j].end   += 1;
         }
         remaining--;
         i++;
@@ -418,11 +422,11 @@ int main(int argc, char** argv)
     if (my_rank == 0)
     {
         printf("\nFinal batch assignment:\n");
-        for (int i = 0; i < nprocs; i++)
+        for (size_t i = 0; i < nprocs; i++)
         {
             size_t start = assigned_chunks[i].start;
             size_t end   = assigned_chunks[i].end - 1;
-            printf("\tP%d: %lu to %lu\n", i, start, end);
+            printf("\tP%lu: %lu to %lu\n", i, start, end);
             fflush(stdout);
         }
         printf("\n");
