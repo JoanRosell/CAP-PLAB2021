@@ -35,8 +35,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <limits.h>
-//#include <mpi/mpi.h>
-#include <mpi.h>
+#include <mpi/mpi.h>
+//#include <mpi.h>
 #include "common.h"
 
 int total;
@@ -64,6 +64,7 @@ void freeTSet(int np, char** tset)
 float f_and(float val, uint32_t msk)
 {
     uint32_t tmp = 0;
+
     memcpy(&tmp, &val, 4);
     tmp &= msk;
     memcpy(&val, &tmp, 4);
@@ -299,6 +300,11 @@ void runN(const int numIn, const int numHid, const int numOut)
     freeTSet(NUMRPAT, rSet);
 }
 
+struct batch_chunk {
+    size_t start;
+    size_t end;
+};
+
 int main(int argc, char** argv)
 {
     // Read parameters from CLI
@@ -359,20 +365,64 @@ int main(int argc, char** argv)
         }
     }
 
-    size_t batch_count   = NUMPAT / BSIZE;
-    size_t extra_batches = batch_count % nprocs;
-    size_t batches_per_proc = batch_count / nprocs;
+    size_t  batch_count      = NUMPAT / BSIZE;
+    size_t  extra_batches    = batch_count % nprocs;
+    size_t  batches_per_proc = batch_count / nprocs;
+    struct batch_chunk* tmp = malloc(sizeof(*tmp) * nprocs);
+    if (tmp == NULL)
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    // This array holds indexes to the start and end of the batches assigned to each process.
+    struct batch_chunk* assigned_chunks = tmp;
+    memset(assigned_chunks, 0, sizeof(*assigned_chunks) * nprocs);
+
+    for (size_t i = 0; i < nprocs; i++)
+    {
+        assigned_chunks[i].start = batches_per_proc * i;
+        assigned_chunks[i].end = batches_per_proc * (i + 1);
+    }
 
     if (my_rank == 0)
     {
         printf("\n\n\t---------- START OF PROGRAM OUTPUT --------------\n");
-        printf("Starting training with:\n\tBatches: %lu\n\tProcesses: %d\n\tBatches per process: %lu\n", batch_count, nprocs, batches_per_proc);
-        printf("\nBatch assignment:\n");
+        printf("\n\nStarting training with:\n\tBatches: %lu\n\tProcesses: %d\n\tBatches per process: %lu\n\tExtra batches: %lu\n", batch_count, nprocs, batches_per_proc, extra_batches);
+        printf("\nBatches assigned before load-balancing:");
+        for (size_t i = 0; i < nprocs; i++)
+        {
+            printf("\n\tProcess %lu: %lu-%lu", i, assigned_chunks[i].start, assigned_chunks[i].end - 1);
+        }
+    }
+
+    // Assign extra batches in a round-robin fashion, if any
+    if (my_rank == 0)
+    {
+        printf("\n\nAssigning %lu extra batches", extra_batches);
+    }
+    size_t i = 0; 
+    size_t remaining = extra_batches;
+    while (remaining)
+    {
+        assigned_chunks[i].end += 1;
+        for (size_t j = i + 1; j < nprocs; j++)
+        {
+            assigned_chunks[j].start += 1;
+            assigned_chunks[j].end += 1;
+        }
+        remaining--;
+        i++;
+    }
+
+    if (my_rank == 0)
+    {
+        printf("\nFinal batch assignment:\n");
         for (int i = 0; i < nprocs; i++)
         {
-            int start = i * batches_per_proc;
-            int end = (i + 1) * batches_per_proc;
-            printf("\tP%d: %d to %d\n", i, start, end - 1);
+            size_t start = assigned_chunks[i].start;
+            size_t end   = assigned_chunks[i].end - 1;
+            printf("\tP%d: %lu to %lu\n", i, start, end);
             fflush(stdout);
         }
         printf("\n");
@@ -396,7 +446,7 @@ int main(int argc, char** argv)
         }
 
         Error = 0.0;
-        for (int nb = my_rank * batches_per_proc; nb < batches_per_proc * (my_rank + 1); nb++) // repeat for all batches
+        for (int nb = assigned_chunks[my_rank].start; nb < assigned_chunks[my_rank].end; nb++) // repeat for all batches
         {
             BError = 0.0;
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
@@ -456,13 +506,13 @@ int main(int argc, char** argv)
                     WeightIH[j][i] += DeltaWeightIH[j][i];
                 }
             }
-            
+
             // Update WeightHO
             for (int k = 0; k < numOut; k++)
             {
                 for (int j = 0; j < numHid; j++)
                 {
-                    WeightHO[k][j] += DeltaWeightHO[k][j];
+                    WeightHO[k][j]    += DeltaWeightHO[k][j];
                     inv_WeightHO[j][k] = WeightHO[k][j];
                 }
             }
