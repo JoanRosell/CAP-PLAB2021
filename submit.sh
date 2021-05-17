@@ -15,4 +15,4 @@ numHid=$4
 numOut=$5
 
 # Launch sbatch
-sbatch -N 1 -o $filename.out -e $filename.err job.sh $filename $epochs $numIn $numHid $numOut
+sbatch -o $filename.out -e $filename.err job.sh $filename $epochs $numIn $numHid $numOut
