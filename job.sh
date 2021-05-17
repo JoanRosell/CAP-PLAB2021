@@ -28,8 +28,8 @@ numOut=$5
 # Compile the source code into an executable
 export CC=$(which nvcc)
 
-#./compile.sh
-nvcc common.c nn-main.cu -o nn-main
+./compile.sh
 
 # Execute
+nsys nvprof --print-gpu-trace ./CAP-PLAB2021.exe
 
