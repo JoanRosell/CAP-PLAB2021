@@ -64,18 +64,6 @@ void freeTSet(int np, char** tset)
     free(tset);
 }
 
-void f_flatten(float* flattened_vector, float** input, size_t row_size, size_t col_size)
-{
-    float* insert_ptr = flattened_vector;
-    float** input_ptr = input;
-    for (size_t i = 0; i < row_size; i++)
-    {
-        memcpy(insert_ptr, *input_ptr, col_size * sizeof(float));
-        insert_ptr += col_size;
-        input_ptr++;
-    }
-}
-
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
     char** tSet;
@@ -93,10 +81,11 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         printf("Loading Patterns: Error!!\n");
         exit(-1);
     }
-    
+
     uint8_t* flat_tset = (uint8_t*) malloc(NUMPAT * 1024 * sizeof(*flat_tset));
-    uint8_t* cpy_ptr = flat_tset;
-    char** tset_ptr = tSet;
+    uint8_t* cpy_ptr   = flat_tset;
+    char**   tset_ptr  = tSet;
+
     for (size_t i = 0; i < NUMPAT; i++)
     {
         memcpy(cpy_ptr, *tset_ptr, 1024);
@@ -123,44 +112,65 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-    float *d_WeightIH;
-    float *d_Hidden;
-    uint8_t* d_flat_tset;
-    float *d_WeightHO;
-    float *d_Output;
-    float *d_Target;
-    float *d_DeltaO;
-    float *d_inv_WeightHO;
-    float *d_DeltaH;
-    float *d_WeightIH;
-    float *d_WeightHO;
-
     // Se reserva el espacio de memoria en la GPU
     // WeightIH
-    float* flat_weight_ih = malloc(numHid * numIn sizeof(float));
-    f_flatten(flat_weight_ih, WeightIH, numHid, numIn);
+    float* d_WeightIH;
+    float* flat_weight_ih = (float*) malloc(numHid * numIn * sizeof(float));
+
+    for (size_t i = 0; i < numHid; i++)
+    {
+        for (size_t j = 0; j < numIn; j++)
+        {
+            flat_weight_ih[i * numIn + j] = WeightIH[i][j];
+        }
+    }
+
     cudaMalloc((void**) &d_WeightIH, numHid * numIn * sizeof(float));
     cudaMemcpy(d_WeightIH, flat_weight_ih, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
 
     // tSet
+    uint8_t* d_flat_tset;
+
     cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset));
     cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(float), cudaMemcpyHostToDevice);
 
     // Hidden
+    float* d_Hidden;
+
     cudaMalloc((void**) &d_Hidden, numHid * sizeof(float));
 
     // WeightHO
+    float* d_WeightHO;
     float* flat_weight_ho = (float*) malloc(numOut * numHid * sizeof(float));
-    f_flatten(flat_weight_ho, WeightHO, numOut, numHid);
-    cudaMalloc((void**) &d_WeigthHO, numOut * numHid * sizeof(float));
-    cudaMemcpy(d_WeigthHO, flat_weight_ho, numOut * numHid * sizeof(float), cudaMemcpyHostToDevice);
+
+    for (size_t i = 0; i < numOut; i++)
+    {
+        for (size_t j = 0; j < numHid; j++)
+        {
+            flat_weight_ho[i * numHid + j] = WeightHO[i][j];
+        }
+    }
+
+    cudaMalloc((void**) &d_WeightHO, numOut * numHid * sizeof(float));
+    cudaMemcpy(d_WeightHO, flat_weight_ho, numOut * numHid * sizeof(float), cudaMemcpyHostToDevice);
 
     // Output
+    float* d_Output;
+
     cudaMalloc((void**) &d_Output, numOut * sizeof(float));
 
     // Target
-    float* flat_target = malloc(NUMPAT * NUMOUT * sizeof(float));
-    f_flatten(flat_target, Target, NUMPAT, NUMOUT);
+    float* d_Target;
+    float* flat_target = (float*) malloc(NUMPAT * NUMOUT * sizeof(float));
+
+    for (size_t i = 0; i < NUMPAT; i++)
+    {
+        for (size_t j = 0; j < NUMOUT; j++)
+        {
+            flat_target[i * NUMOUT + j] = Target[i][j];
+        }
+    }
+
     cudaMalloc((void**) &d_Target, NUMPAT * NUMOUT * sizeof(float));
     cudaMemcpy(d_Target, flat_target, NUMPAT * NUMOUT * sizeof(float), cudaMemcpyHostToDevice);
 
@@ -210,7 +220,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumH = 0.0;
                     for (int i = 0; i < numIn; i++)
                     {
-                        SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
+                        //SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
+                        SumH += flat_weight_ih[j * numIn + i] * flat_tset[p * 1024 + i];
                     }
                     Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
@@ -234,10 +245,12 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     {
                         SumDOW += inv_WeightHO[j][k] * DeltaO[k];
                     }
+
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
                     for (int i = 0; i < numIn; i++)
                     {
-                        DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
+                        //DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
+                        DeltaWeightIH[j][i] = (eta * DeltaH[j]) * flat_tset[p * 1024 + i] + alpha * DeltaWeightIH[j][i];
                     }
                 }
 
@@ -284,20 +297,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-    cudaFree(d_WeightIH);
-    cudaFree(d_tSet_msk);
-    cudaFree(d_Hidden);
-    cudaFree(d_WeightHO);
-    cudaFree(d_Output);
-    cudaFree(d_Target);
-    cudaFree(d_DeltaO);
-    cudaFree(d_inv_Weight);
-    cudaFree(d_DeltaH);
-    cudaFree(d_WeightIH);
-    cudaFree(d_WeightHO);
-
     freeTSet(NUMPAT, tSet);
-    free(tSet_msk);
     printf("END TRAINING\n");
 }
 
@@ -380,9 +380,10 @@ int main(int argc, char** argv)
     runN(numIn, numHid, numOut);
 
     clock_t end = clock();
+
     printf("\n\nGoodbye! (%f sec)\n\n", (end - start) / (1.0 * CLOCKS_PER_SEC));
 
-    return 1;
+    exit(EXIT_SUCCESS);
 }
 
-/*******************************************************************************/
+/******************************************************************************/
