@@ -118,6 +118,35 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
+
+    
+    float *d_WeightIH;
+    uint32_t *d_tSet_msk;
+    float *d_Hidden;
+    float *d_WeightHO;
+    float *d_Output;
+    float *d_Target;
+    float *d_DeltaO;
+    float *d_inv_WeightHO;
+    float *d_DeltaH;
+    float *d_WeightIH;
+    float *d_WeightHO;
+
+    //Se reserva el espacio de memoria en la GPU
+    cudaMalloc((void**) &d_WeightIH, numHid * numIn * sizeof(float));
+    cudaMalloc((void**) &d_tSet_msk, NUMPAT * 1024 * sizeof(uint32_t));
+    cudaMalloc((void**) &d_Hidden, numHid * sizeof(float));
+    cudaMalloc((void**) &d_WeightHO, NUMOUT * NUMHID * sizeof(float));
+    cudaMalloc((void**) &d_Output, numOut * sizeof(float));
+    cudaMalloc((void**) &d_Target, NUMPAT * NUMOUT * sizeof(float));
+    cudaMalloc((void**) &d_DeltaO, numOut * sizeof(float));
+    cudaMalloc((void**) &d_inv_Weight, NUMOUT * NUMHID * sizeof(float));
+    cudaMalloc((void**) &d_DeltaH, numHid * sizeof(float));
+    cudaMalloc((void**) &d_WeightIH, NUMHID * NUMIN * sizeof(float));
+    cudaMalloc((void**) &d_WeigthHO, NUMOUT * NUMHID * sizeof(float));
+
+    //cudaMemcpy(d_WeightIH, WeightIH, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
+
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
@@ -225,6 +254,18 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             }
         }
     }
+
+    cudaFree(d_WeightIH);
+    cudaFree(d_tSet_msk);
+    cudaFree(d_Hidden);
+    cudaFree(d_WeightHO);
+    cudaFree(d_Output);
+    cudaFree(d_Target);
+    cudaFree(d_DeltaO);
+    cudaFree(d_inv_Weight);
+    cudaFree(d_DeltaH);
+    cudaFree(d_WeightIH);
+    cudaFree(d_WeightHO);
 
     freeTSet(NUMPAT, tSet);
     free(tSet_msk);
