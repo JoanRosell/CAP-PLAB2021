@@ -231,7 +231,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumO = 0.0;
                     for (int j = 0; j < numHid; j++)
                     {
-                        SumO += Hidden[j] * WeightHO[k][j];
+                        SumO += Hidden[j] * flat_weight_ho[k * numHid + j];
                     }
                     Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
                     BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
@@ -267,7 +267,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 for (int i = 0; i < numIn; i++)
                 {
-                    WeightIH[j][i] += DeltaWeightIH[j][i];
+                    flat_weight_ih[j * numIn + i] += DeltaWeightIH[j][i];
                 }
             }
 
@@ -275,8 +275,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 for (int j = 0; j < numHid; j++)
                 {
-                    WeightHO[k][j]    += DeltaWeightHO[k][j];
-                    inv_WeightHO[j][k] = WeightHO[k][j];
+                    flat_weight_ho[k * numHid + j] += DeltaWeightHO[k][j];
+                    inv_WeightHO[j][k] = flat_weight_ho[k * numHid + j];
                 }
             }
 
@@ -294,6 +294,23 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
             }
+        }
+    }
+
+    // Return the train results to the original arrays
+    for (size_t i = 0; i < numHid; i++)
+    {
+        for (size_t j = 0; j < numIn; j++)
+        {
+            WeightIH[i][j] = flat_weight_ih[i * numIn + j];
+        }
+    }
+
+    for (size_t i = 0; i < numOut; i++)
+    {
+        for (size_t j = 0; j < numHid; j++)
+        {
+            WeightHO[i][j] = flat_weight_ho[i * numHid + j];
         }
     }
 
