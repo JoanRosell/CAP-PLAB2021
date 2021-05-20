@@ -74,7 +74,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     int   ranpat[NUMPAT];
     float Hidden[numHid], Output[numOut], DeltaO[numOut], DeltaH[numHid];
     float SumO, SumH, SumDOW;
-    float inv_WeightHO[NUMHID][NUMOUT];
+    float inv_WeightHO[NUMHID][NUMOUT]; // TODO: malloc this array so we can use the inverse in the device
 
     if ((tSet = loadPatternSet(NUMPAT, "optdigits.tra", 1)) == NULL)
     {
@@ -189,23 +189,21 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
+        for (int p = 0; p < NUMPAT; p++)                            // randomize order of individuals
         {
-            for (int p = 0; p < NUMPAT; p++) // randomize order of individuals
-            {
-                ranpat[p] = p;
-            }
-            for (int p = 0; p < NUMPAT; p++)
-            {
-                int x  = rando();
-                int np = (x * x) % NUMPAT;
-                int op = ranpat[p];
-                ranpat[p]  = ranpat[np];
-                ranpat[np] = op;
-            }
-
-            printf(".");
-            fflush(stdout);
+            ranpat[p] = p;
         }
+        for (int p = 0; p < NUMPAT; p++)
+        {
+            int x  = rando();
+            int np = (x * x) % NUMPAT;
+            int op = ranpat[p];
+            ranpat[p]  = ranpat[np];
+            ranpat[np] = op;
+        }
+
+        printf(".");
+        fflush(stdout);
 
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
@@ -276,7 +274,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 for (int j = 0; j < numHid; j++)
                 {
                     flat_weight_ho[k * numHid + j] += DeltaWeightHO[k][j];
-                    inv_WeightHO[j][k] = flat_weight_ho[k * numHid + j];
+                    inv_WeightHO[j][k]              = flat_weight_ho[k * numHid + j];
                 }
             }
 
