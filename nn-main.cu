@@ -64,6 +64,18 @@ void freeTSet(int np, char** tset)
     free(tset);
 }
 
+void f_flatten(float* flattened_vector, float** input, size_t row_size, size_t col_size)
+{
+    float* insert_ptr = flattened_vector;
+    float** input_ptr = input;
+    for (size_t i = 0; i < row_size; i++)
+    {
+        memcpy(insert_ptr, *input_ptr, col_size * sizeof(float));
+        insert_ptr += col_size;
+        input_ptr++;
+    }
+}
+
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
     char** tSet;
@@ -88,7 +100,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     char** tset_ptr = tSet;
     for (size_t i = 0; i < NUMPAT; i++)
     {
-        memcpy(cpy_ptr, tset_ptr, 1024);
+        memcpy(cpy_ptr, *tset_ptr, 1024);
         cpy_ptr += 1024;
         tset_ptr++;
     }
