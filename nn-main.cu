@@ -82,6 +82,16 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         printf("Loading Patterns: Error!!\n");
         exit(-1);
     }
+    
+    uint8_t* flat_tset = (uint8_t*) malloc(NUMPAT * 1024 * sizeof(*flat_tset));
+    uint8_t* cpy_ptr = flat_tset;
+    char** tset_ptr = tSet;
+    for (size_t i = 0; i < NUMPAT; i++)
+    {
+        memcpy(cpy_ptr, tset_ptr, 1024);
+        cpy_ptr += 1024;
+        tset_ptr++;
+    }
 
     uint32_t* tSet_msk = (uint32_t*) malloc(sizeof(uint32_t) * NUMPAT * 1024);
     for (size_t i = 0; i < NUMPAT; i++)
@@ -113,7 +123,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
     float *d_WeightIH;
     float *d_Hidden;
-    char** d_flat_tset;
+    uint8_t* d_flat_tset;
     float *d_WeightHO;
     float *d_Output;
     float *d_Target;
@@ -125,7 +135,11 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
     //Se reserva el espacio de memoria en la GPU
     cudaMalloc((void**) &d_WeightIH, numHid * numIn * sizeof(float));
-    cudaMalloc((void**) &d_training_set, NUMPAT * 1024 * sizeof(*d_training_set));
+    cudaMemcpy(d_WeightIH, WeightIH, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
+
+    cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset));
+    cudaMemcpy(d_flat_tset, flat_tset, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
+
     cudaMalloc((void**) &d_Hidden, numHid * sizeof(float));
 
     //cudaMalloc((void**) &d_tSet_msk, NUMPAT * 1024 * sizeof(uint32_t));
