@@ -88,7 +88,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     float SumO, SumH, SumDOW;
     float inv_WeightHO[NUMHID][NUMOUT];
 
-    // TODO: flatten the tset array into NUMPAT * 1024 contiguous memory
     if ((tSet = loadPatternSet(NUMPAT, "optdigits.tra", 1)) == NULL)
     {
         printf("Loading Patterns: Error!!\n");
@@ -103,15 +102,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         memcpy(cpy_ptr, *tset_ptr, 1024);
         cpy_ptr += 1024;
         tset_ptr++;
-    }
-
-    uint32_t* tSet_msk = (uint32_t*) malloc(sizeof(uint32_t) * NUMPAT * 1024);
-    for (size_t i = 0; i < NUMPAT; i++)
-    {
-        for (size_t j = 0; j < 1024; j++)
-        {
-            tSet_msk[i * 1024 + j] = tSet[i][j] * 0xFFFFFFFF;
-        }
     }
 
     for (int i = 0; i < numHid; i++)
@@ -145,14 +135,34 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     float *d_WeightIH;
     float *d_WeightHO;
 
-    //Se reserva el espacio de memoria en la GPU
+    // Se reserva el espacio de memoria en la GPU
+    // WeightIH
+    float* flat_weight_ih = malloc(numHid * numIn sizeof(float));
+    f_flatten(flat_weight_ih, WeightIH, numHid, numIn);
     cudaMalloc((void**) &d_WeightIH, numHid * numIn * sizeof(float));
-    cudaMemcpy(d_WeightIH, WeightIH, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_WeightIH, flat_weight_ih, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
 
+    // tSet
     cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset));
-    cudaMemcpy(d_flat_tset, flat_tset, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(float), cudaMemcpyHostToDevice);
 
+    // Hidden
     cudaMalloc((void**) &d_Hidden, numHid * sizeof(float));
+
+    // WeightHO
+    float* flat_weight_ho = (float*) malloc(numOut * numHid * sizeof(float));
+    f_flatten(flat_weight_ho, WeightHO, numOut, numHid);
+    cudaMalloc((void**) &d_WeigthHO, numOut * numHid * sizeof(float));
+    cudaMemcpy(d_WeigthHO, flat_weight_ho, numOut * numHid * sizeof(float), cudaMemcpyHostToDevice);
+
+    // Output
+    cudaMalloc((void**) &d_Output, numOut * sizeof(float));
+
+    // Target
+    float* flat_target = malloc(NUMPAT * NUMOUT * sizeof(float));
+    f_flatten(flat_target, Target, NUMPAT, NUMOUT);
+    cudaMalloc((void**) &d_Target, NUMPAT * NUMOUT * sizeof(float));
+    cudaMemcpy(d_Target, flat_target, NUMPAT * NUMOUT * sizeof(float), cudaMemcpyHostToDevice);
 
     //cudaMalloc((void**) &d_tSet_msk, NUMPAT * 1024 * sizeof(uint32_t));
     //cudaMalloc((void**) &d_WeightHO, NUMOUT * NUMHID * sizeof(float));
