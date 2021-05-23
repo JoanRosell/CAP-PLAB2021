@@ -61,7 +61,7 @@ inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char
     }
 }
 
-//#define DEBUG
+#define DEBUG
 
 int total;
 int seed = 50;
@@ -88,7 +88,7 @@ void freeTSet(int np, char** tset)
 __global__ 
 void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, char* const tset)
 {
-    __shared__ volatile float s_sum[NUMIN]; 
+    __shared__ float s_sum[NUMIN]; 
     size_t i = threadIdx.x;
 
     s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
@@ -307,6 +307,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     h_weight_ih[j * numIn + i] += DeltaWeightIH[j][i];
                 }
             }
+            cudaCheckErrors(cudaMemcpy(d_weight_ih, h_weight_ih, numHid * numIn * sizeof(*d_weight_ih), cudaMemcpyHostToDevice));
 
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
