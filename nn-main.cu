@@ -108,13 +108,6 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
     {
         hidden[blockIdx.x] = 1.0 / (1.0 + exp(-s_sum[0]));
     }
-    //float SumH = 0.0;
-    //for (int i = 0; i < numIn; i++)
-    //{
-    ////SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
-    //SumH += weight_ih[j * numIn + i] * tset[i];
-    //}
-    //hidden[j] = 1.0 / (1.0 + exp(-SumH));
 }
 
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
@@ -281,12 +274,12 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 float test_hidden[NUMHID] = {0};
                 for (int j = 0; j < numHid; j++) // compute hidden unit activations
                 {
-                    float SumH = 0.0;
+                    float SumH = 0.0f;
                     for (int i = 0; i < numIn; i++)
                     {
                         SumH += flat_weight_ih[j * numIn + i] * flat_tset[p * 1024 + i];
                     }
-                    test_hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                    test_hidden[j] = 1.0f / (1.0f + exp(-SumH));
                 }
 
                 for (size_t h = 0; h < numHid; h++)
@@ -317,7 +310,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumDOW = 0.0;
                     for (int k = 0; k < numOut; k++)
                     {
-                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
+                        SumDOW += flat_weight_ho[j * numOut + k] * DeltaO[k];
                     }
 
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
@@ -344,6 +337,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     flat_weight_ih[j * numIn + i] += DeltaWeightIH[j][i];
                 }
             }
+            cudaCheckErrors(cudaMemcpy(d_WeightIH, flat_weight_ih, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice));
 
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
@@ -358,16 +352,14 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
 
 
+        Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
+        if (!(epoch % 100))
         {
-            Error = Error / ((NUMPAT / BSIZE) * BSIZE); //mean error for the last epoch
-            if (!(epoch % 100))
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-            }
-            if (Error < 0.0004)
-            {
-                printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
-            }
+            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
+        }
+        if (Error < 0.0004)
+        {
+            printf("\nEpoch %-5d :   Error = %f \n", epoch, Error);
         }
     }
 
