@@ -61,7 +61,7 @@ inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char
     }
 }
 
-#define DEBUG
+//#define DEBUG
 
 int total;
 int seed = 50;
@@ -86,7 +86,7 @@ void freeTSet(int np, char** tset)
 }
 
 __global__ 
-void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, uint8_t* const tset)
+void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, char* const tset)
 {
     __shared__ volatile float s_sum[NUMIN]; 
     size_t i = threadIdx.x;
@@ -219,85 +219,85 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 int p = ranpat[np];
 
+                /*
+                   for (int j = 0; j < numHid; j++) // compute hidden unit activations
+                   {
+                   float SumH = 0.0;
+                   for (int i = 0; i < numIn; i++)
+                   {
+                   SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
+                   }
+                   Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                   }
+                 */
+
+                k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
+                cudaError_t errSync  = cudaGetLastError();
+                if (errSync != cudaSuccess) 
+                {
+                    printf("\nSync kernel error: %s\n", cudaGetErrorString(errSync));
+                    exit(EXIT_FAILURE);
+                }
+
+                cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
+
+#ifdef DEBUG
+                float test_hidden[NUMHID] = {0};
                 for (int j = 0; j < numHid; j++) // compute hidden unit activations
                 {
-                    float SumH = 0.0;
+                    float SumH = 0.0f;
                     for (int i = 0; i < numIn; i++)
                     {
                         SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
                     }
-                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                    test_hidden[j] = 1.0f / (1.0f + exp(-SumH));
                 }
 
-                /*
-                   k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
-                   cudaError_t errSync  = cudaGetLastError();
-                   if (errSync != cudaSuccess) 
-                   {
-                   printf("\nSync kernel error: %s\n", cudaGetErrorString(errSync));
-                   exit(EXIT_FAILURE);
-                   }
-
-                   cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
-
-#ifdef DEBUG
-float test_hidden[NUMHID] = {0};
-for (int j = 0; j < numHid; j++) // compute hidden unit activations
-{
-float SumH = 0.0f;
-for (int i = 0; i < numIn; i++)
-{
-SumH += flat_weight_ih[j * numIn + i] * flat_tset[p * 1025 + i];
-}
-test_hidden[j] = 1.0f / (1.0f + exp(-SumH));
-}
-
-for (size_t h = 0; h < numHid; h++)
-{
-if (abs(Hidden[h] - test_hidden[h]) > 0.0001f)
-{
-printf("GPU error while computing HIDDEN @ idx: %lu\n", h);
-printf("\tCPU val: %f\n\tGPU val: %f\n", test_hidden[h], Hidden[h]);
-exit(EXIT_FAILURE);
-}
-}
+                for (size_t h = 0; h < numHid; h++)
+                {
+                    if (abs(Hidden[h] - test_hidden[h]) > 0.0001f)
+                    {
+                        printf("GPU error while computing HIDDEN @ idx: %lu\n", h);
+                        printf("\tCPU val: %f\n\tGPU val: %f\n", test_hidden[h], Hidden[h]);
+                        exit(EXIT_FAILURE);
+                    }
+                }
 #endif
-                 */
 
-for (int k = 0; k < numOut; k++) // compute output unit activations and errors
-{
-    float SumO = 0.0;
-    for (int j = 0; j < numHid; j++)
-    {
-        SumO += Hidden[j] * WeightHO[k][j];
-    }
-    Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
-    BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
-    DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
-}
+                for (int k = 0; k < numOut; k++) // compute output unit activations and errors
+                {
+                    float SumO = 0.0;
+                    for (int j = 0; j < numHid; j++)
+                    {
+                        SumO += Hidden[j] * WeightHO[k][j];
+                    }
+                    Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
+                    BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
+                    DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
+                }
 
-for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
-{
-    float SumDOW = 0.0;
-    for (int k = 0; k < numOut; k++)
-    {
-        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
-    }
-    DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
-    for (int i = 0; i < numIn; i++)
-    {
-        //DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
-        DeltaWeightIH[j][i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * DeltaWeightIH[j][i];
-    }
-}
+                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+                {
+                    float SumDOW = 0.0;
+                    for (int k = 0; k < numOut; k++)
+                    {
+                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
+                    }
+                    DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
+                    for (int i = 0; i < numIn; i++)
+                    {
+                        //DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
+                        DeltaWeightIH[j][i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * DeltaWeightIH[j][i];
+                    }
+                }
 
-for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
-{
-    for (int j = 0; j < numHid; j++)
-    {
-        DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
-    }
-}
+                for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
+                {
+                    for (int j = 0; j < numHid; j++)
+                    {
+                        DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
+                    }
+                }
             }
 
             for (int j = 0; j < numHid; j++) // update weights WeightIH
@@ -342,6 +342,7 @@ for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
     printf("END TRAINING\n");
 }
 
+/*
 void _trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
     char** tSet;
@@ -609,6 +610,7 @@ void _trainN(const int epochs, const int numIn, const int numHid, const int numO
     freeTSet(NUMPAT, tSet);
     printf("END TRAINING\n");
 }
+*/
 
 void printRecognized(int p, float Output[], const int numOut)
 {
