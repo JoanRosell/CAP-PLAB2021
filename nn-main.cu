@@ -177,8 +177,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     // tSet
     uint8_t* d_flat_tset;
 
-    cudaCheckErrors(cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset)));
-    cudaCheckErrors(cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset), cudaMemcpyHostToDevice));
+    cudaCheckErrors(cudaMalloc((void**) &d_flat_tset, NUMPAT * 1025 * sizeof(*d_flat_tset)));
+    cudaCheckErrors(cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1025 * sizeof(*d_flat_tset), cudaMemcpyHostToDevice));
 
     // Hidden
     float* d_Hidden;
@@ -260,7 +260,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 int p = ranpat[np];
 
-                k_compute_hidden<<<numHid, numIn>>>(d_Hidden, NUMHID, d_WeightIH, NUMIN, &d_flat_tset[p * 1024]);
+                k_compute_hidden<<<numHid, numIn>>>(d_Hidden, NUMHID, d_WeightIH, NUMIN, &d_flat_tset[p * 1025]);
                 cudaError_t errSync  = cudaGetLastError();
                 if (errSync != cudaSuccess) 
                 {
@@ -277,7 +277,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     float SumH = 0.0f;
                     for (int i = 0; i < numIn; i++)
                     {
-                        SumH += flat_weight_ih[j * numIn + i] * flat_tset[p * 1024 + i];
+                        SumH += flat_weight_ih[j * numIn + i] * flat_tset[p * 1025 + i];
                     }
                     test_hidden[j] = 1.0f / (1.0f + exp(-SumH));
                 }
@@ -317,7 +317,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     for (int i = 0; i < numIn; i++)
                     {
                         //DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
-                        DeltaWeightIH[j][i] = (eta * DeltaH[j]) * flat_tset[p * 1024 + i] + alpha * DeltaWeightIH[j][i];
+                        DeltaWeightIH[j][i] = (eta * DeltaH[j]) * flat_tset[p * 1025 + i] + alpha * DeltaWeightIH[j][i];
                     }
                 }
 
