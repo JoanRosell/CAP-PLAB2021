@@ -61,7 +61,7 @@ inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char
     }
 }
 
-//#define DEBUG
+#define DEBUG
 
 int total;
 int seed = 50;
@@ -284,7 +284,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
                 for (size_t h = 0; h < numHid; h++)
                 {
-                    if (Hidden[h] != test_hidden[h])
+                    if (abs(Hidden[h] - test_hidden[h]) > 0.0001f)
                     {
                         printf("GPU error while computing HIDDEN @ idx: %lu\n", h);
                         printf("\tCPU val: %f\n\tGPU val: %f\n", test_hidden[h], Hidden[h]);
