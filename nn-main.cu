@@ -92,32 +92,16 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
     size_t i = threadIdx.x;
 
     s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
+    __syncthreads();
 
-    for (size_t s = blockDim.x / 2; s > 32; s >>= 1)
+    for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
     {
-        __syncthreads();
         if (i < s)
         {
             s_sum[i] += s_sum[i + s];
         }
-    }
 
-    // Unroll last 5 steps to avoid warp divergence in the last warp
-    if (i < 32)
-    {
-        float tmpSum = 0.0f;
-        tmpSum += s_sum[i + 32]; __syncwarp();
-        s_sum[i] += tmpSum; __syncwarp();
-        tmpSum += s_sum[i + 16]; __syncwarp();
-        s_sum[i] += tmpSum; __syncwarp();
-        tmpSum += s_sum[i + 8]; __syncwarp();
-        s_sum[i] += tmpSum; __syncwarp();
-        tmpSum += s_sum[i + 4]; __syncwarp();
-        s_sum[i] += tmpSum; __syncwarp();
-        tmpSum += s_sum[i + 2]; __syncwarp();
-        s_sum[i] += tmpSum; __syncwarp();
-        tmpSum += s_sum[i + 1]; __syncwarp();
-        s_sum[i] += tmpSum; __syncwarp();
+        __syncthreads();
     }
 
     if (i == 0)
