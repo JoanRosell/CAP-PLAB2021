@@ -43,6 +43,24 @@ extern "C" {
     #include "common.h"
 }
 
+// Macro to check CUDA errors from syscalls
+#define cudaCheckErrors(ans) { __cudaCheckErrors((ans), #ans, __FILE__, __LINE__); }
+inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char *file, int line, bool abort=true)
+{
+    if (code != cudaSuccess) 
+    {
+        char func_name[strlen(call_str)];
+        memcpy(func_name, call_str, strlen(call_str));
+        char* paren_ptr = strchr(func_name, '(');
+        if (paren_ptr != NULL)
+        {
+            *paren_ptr = '\0';
+        }
+        fprintf(stderr,"%s: %s %s:%d\n", func_name, cudaGetErrorString(code), file, line);
+        if (abort) exit(code);
+    }
+}
+
 #define DEBUG
 
 int total;
@@ -160,19 +178,19 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-    cudaMalloc((void**) &d_WeightIH, numHid * numIn * sizeof(float));
-    cudaMemcpy(d_WeightIH, flat_weight_ih, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
+    cudaCheckErrors(cudaMalloc((void**) &d_WeightIH, numHid * numIn * sizeof(float)));
+    cudaCheckErrors(cudaMemcpy(d_WeightIH, flat_weight_ih, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice));
 
     // tSet
     uint8_t* d_flat_tset;
 
-    cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset));
-    cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(float), cudaMemcpyHostToDevice);
+    cudaCheckErrors(cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset)));
+    cudaCheckErrors(cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(float), cudaMemcpyHostToDevice));
 
     // Hidden
     float* d_Hidden;
 
-    cudaMalloc((void**) &d_Hidden, numHid * sizeof(float));
+    cudaCheckErrors(cudaMalloc((void**) &d_Hidden, numHid * sizeof(float)));
 
     // WeightHO
     float* d_WeightHO;
@@ -186,13 +204,13 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-    cudaMalloc((void**) &d_WeightHO, numOut * numHid * sizeof(float));
-    cudaMemcpy(d_WeightHO, flat_weight_ho, numOut * numHid * sizeof(float), cudaMemcpyHostToDevice);
+    cudaCheckErrors(cudaMalloc((void**) &d_WeightHO, numOut * numHid * sizeof(float)));
+    cudaCheckErrors(cudaMemcpy(d_WeightHO, flat_weight_ho, numOut * numHid * sizeof(float), cudaMemcpyHostToDevice));
 
     // Output
     float* d_Output;
 
-    cudaMalloc((void**) &d_Output, numOut * sizeof(float));
+    cudaCheckErrors(cudaMalloc((void**) &d_Output, numOut * sizeof(float)));
 
     // Target
     float* d_Target;
@@ -206,8 +224,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
-    cudaMalloc((void**) &d_Target, NUMPAT * NUMOUT * sizeof(float));
-    cudaMemcpy(d_Target, flat_target, NUMPAT * NUMOUT * sizeof(float), cudaMemcpyHostToDevice);
+    cudaCheckErrors(cudaMalloc((void**) &d_Target, NUMPAT * NUMOUT * sizeof(float)));
+    cudaCheckErrors(cudaMemcpy(d_Target, flat_target, NUMPAT * NUMOUT * sizeof(float), cudaMemcpyHostToDevice));
 
     //cudaMalloc((void**) &d_tSet_msk, NUMPAT * 1024 * sizeof(uint32_t));
     //cudaMalloc((void**) &d_WeightHO, NUMOUT * NUMHID * sizeof(float));
@@ -257,12 +275,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     exit(EXIT_FAILURE);
                 }
 
-                cudaError_t err = cudaMemcpy(Hidden, d_Hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost);
-                if (err != cudaSuccess)
-                {
-                    printf("cudaMemcpy: %s\n", cudaGetErrorString(errSync));
-                    exit(EXIT_FAILURE);
-                }
+                cudaCheckErrors(cudaMemcpy(Hidden, d_Hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
 
                 #ifdef DEBUG
                 float test_hidden[NUMHID] = {0};
