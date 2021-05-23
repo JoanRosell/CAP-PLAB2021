@@ -129,14 +129,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     }
 
     uint8_t* flat_tset = (uint8_t*) malloc(NUMPAT * 1025 * sizeof(*flat_tset));
-    uint8_t* cpy_ptr   = flat_tset;
-    char**   tset_ptr  = tSet;
-
     for (size_t i = 0; i < NUMPAT; i++)
     {
-        memcpy(cpy_ptr, *tset_ptr, 1025);
-        cpy_ptr += 1025;
-        tset_ptr++;
+        for (size_t j = 0; j < 1025; j++)
+            flat_tset[i * 1025 + j] = tSet[i][j];
     }
 
     for (int i = 0; i < numHid; i++)
@@ -229,8 +225,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     //cudaMalloc((void**) &d_DeltaH, numHid * sizeof(float));
     //cudaMalloc((void**) &d_WeightIH, NUMHID * NUMIN * sizeof(float));
     //cudaMalloc((void**) &d_WeigthHO, NUMOUT * NUMHID * sizeof(float));
-
-    //cudaMemcpy(d_WeightIH, WeightIH, numHid * numIn * sizeof(float), cudaMemcpyHostToDevice);
 
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
