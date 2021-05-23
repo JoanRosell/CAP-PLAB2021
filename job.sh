@@ -31,5 +31,5 @@ export CC=$(which nvcc)
 ./compile.sh
 
 # Execute
-nsys nvprof --print-gpu-trace ./CAP-PLAB2021.exe
+nsys nvprof --print-gpu-trace build/CAP-PLAB2021.exe
 
