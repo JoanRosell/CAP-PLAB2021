@@ -36,11 +36,14 @@
 #include <string.h>
 #include <limits.h>
 #include <cuda.h>
+#include <assert.h>
 
 // Include as extern to link the C source with the CUDA source
 extern "C" {
     #include "common.h"
 }
+
+#define DEBUG
 
 int total;
 int seed = 50;
@@ -62,6 +65,38 @@ void freeTSet(int np, char** tset)
         free(tset[i]);
     }
     free(tset);
+}
+
+__global__ 
+void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, uint8_t* const tset)
+{
+    __shared__ volatile float s_sum[NUMIN]; 
+    size_t i = threadIdx.x;
+
+    s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
+    __syncthreads();
+
+    for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
+    {
+        if (i < s)
+        {
+            s_sum[i] += s_sum[i + s];
+        }
+
+        __syncthreads();
+    }
+
+    if (i == 0)
+    {
+        hidden[blockIdx.x] = 1.0 / (1.0 + exp(-s_sum[0]));
+    }
+    //float SumH = 0.0;
+    //for (int i = 0; i < numIn; i++)
+    //{
+    ////SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
+    //SumH += weight_ih[j * numIn + i] * tset[i];
+    //}
+    //hidden[j] = 1.0 / (1.0 + exp(-SumH));
 }
 
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
@@ -193,6 +228,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         {
             ranpat[p] = p;
         }
+
         for (int p = 0; p < NUMPAT; p++)
         {
             int x  = rando();
@@ -213,16 +249,43 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 int p = ranpat[np];
 
+                k_compute_hidden<<<numHid, numIn>>>(d_Hidden, NUMHID, d_WeightIH, NUMIN, &d_flat_tset[p * 1024]);
+                cudaError_t errSync  = cudaGetLastError();
+                if (errSync != cudaSuccess) 
+                {
+                    printf("\nSync kernel error: %s\n", cudaGetErrorString(errSync));
+                    exit(EXIT_FAILURE);
+                }
+
+                cudaError_t err = cudaMemcpy(Hidden, d_Hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost);
+                if (err != cudaSuccess)
+                {
+                    printf("cudaMemcpy: %s\n", cudaGetErrorString(errSync));
+                    exit(EXIT_FAILURE);
+                }
+
+                #ifdef DEBUG
+                float test_hidden[NUMHID] = {0};
                 for (int j = 0; j < numHid; j++) // compute hidden unit activations
                 {
                     float SumH = 0.0;
                     for (int i = 0; i < numIn; i++)
                     {
-                        //SumH += f_and(WeightIH[j][i], tSet_msk[p * 1024 + i]);
                         SumH += flat_weight_ih[j * numIn + i] * flat_tset[p * 1024 + i];
                     }
-                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                    test_hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
+
+                for (size_t h = 0; h < numHid; h++)
+                {
+                    if (Hidden[h] != test_hidden[h])
+                    {
+                        printf("GPU error while computing HIDDEN @ idx: %lu\n", h);
+                        printf("\tCPU val: %f\n\tGPU val: %f\n", test_hidden[h], Hidden[h]);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                #endif
 
                 for (int k = 0; k < numOut; k++) // compute output unit activations and errors
                 {
@@ -388,6 +451,13 @@ int main(int argc, char** argv)
     const int numIn  = (argc > 2) ? atoi(argv[2]) : NUMIN;
     const int numHid = (argc > 3) ? atoi(argv[3]) : NUMHID;
     const int numOut = (argc > 4) ? atoi(argv[4]) : NUMOUT;
+
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+    printf("Device props:\n");
+    printf("    Mode: %d\n", prop.computeMode);
+    printf("    Capability: %d.%d\n", prop.minor, prop.major);
+    printf("\n");
 
     clock_t start = clock();
 
