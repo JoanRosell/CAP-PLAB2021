@@ -135,14 +135,14 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         exit(-1);
     }
 
-    uint8_t* flat_tset = (uint8_t*) malloc(NUMPAT * 1024 * sizeof(*flat_tset));
+    uint8_t* flat_tset = (uint8_t*) malloc(NUMPAT * 1025 * sizeof(*flat_tset));
     uint8_t* cpy_ptr   = flat_tset;
     char**   tset_ptr  = tSet;
 
     for (size_t i = 0; i < NUMPAT; i++)
     {
-        memcpy(cpy_ptr, *tset_ptr, 1024);
-        cpy_ptr += 1024;
+        memcpy(cpy_ptr, *tset_ptr, 1025);
+        cpy_ptr += 1025;
         tset_ptr++;
     }
 
@@ -185,7 +185,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     uint8_t* d_flat_tset;
 
     cudaCheckErrors(cudaMalloc((void**) &d_flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset)));
-    cudaCheckErrors(cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(float), cudaMemcpyHostToDevice));
+    cudaCheckErrors(cudaMemcpy(d_flat_tset, flat_tset, NUMPAT * 1024 * sizeof(*d_flat_tset), cudaMemcpyHostToDevice));
 
     // Hidden
     float* d_Hidden;
