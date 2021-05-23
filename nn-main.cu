@@ -61,7 +61,7 @@ inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char
     }
 }
 
-#define DEBUG
+//#define DEBUG
 
 int total;
 int seed = 50;
