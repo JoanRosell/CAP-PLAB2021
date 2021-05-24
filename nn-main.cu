@@ -406,7 +406,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                     float SumO = 0.0;
                     for (int j = 0; j < numHid; j++)
                     {
-                        SumO += Hidden[j] * WeightHO[k][j];
+                        SumO += Hidden[j] * h_weight_ho[k * numHid + j];
                     }
                     test_output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
                     test_batch_error   += 0.5 * (h_target[p * NUMOUT + k] - test_output[k]) * (h_target[p * NUMOUT + k] - test_output[k]); // SSE
