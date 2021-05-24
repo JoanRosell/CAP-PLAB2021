@@ -69,7 +69,7 @@ inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char
     }
 }
 
-#define DEBUG
+//#define DEBUG
 
 int total;
 int seed = 50;
@@ -193,7 +193,7 @@ void k_compute_delta_ho(float* delta, float* in_a, float* in_b)
 {
     size_t i = threadIdx.x;
     if (i < NUMHID)
-        delta[blockIdx.x * blockDim.x + i] = d_eta * in_b[i] * in_a[blockIdx.x] + d_alpha * delta[blockIdx.x * blockDim.x + i];
+        delta[blockIdx.x * NUMHID + i] = d_eta * in_b[i] * in_a[blockIdx.x] + d_alpha * delta[blockIdx.x * NUMHID + i];
 }
 
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
@@ -287,13 +287,14 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     cudaCheckErrors(cudaMemcpy(d_delta_weight_ih, h_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyHostToDevice));
 
     // Init WeightHO
-    float* test_delta_ho = (float*) malloc(numOut * numHid sizeof(*test_delta_ho));
+    float* test_delta_ho = (float*) malloc(numOut * numHid * sizeof(*test_delta_ho));
     for (int i = 0; i < numOut; i++)
     {
         for (int j = 0; j < numHid; j++)
         {
             WeightHO[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
             DeltaWeightHO[i][j] = 0.0;
+            test_delta_ho[i * numHid + j] = 0.0;
             inv_WeightHO[j][i]  = WeightHO[i][j];
         }
     }
@@ -573,8 +574,8 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                     {
                         if (abs(h_delta_weight_ho[i * numHid + j] - test_delta_ho[i * numHid + j]) > 0.0001f)
                         {
-                            printf("GPU error while computing DeltaWeightIH @ idx: %lu\n", i * numHid + j);
-                            printf("\tCPU val: %f\n\tGPU val: %f\n", test_delta_ih[i * numHid + j], h_delta_weight_ih[i * numHid + j]);
+                            printf("GPU error while computing DeltaWeightHO @ idx: %lu\n", i * numHid + j);
+                            printf("\tCPU val: %f\n\tGPU val: %f\n", test_delta_ho[i * numHid + j], h_delta_weight_ho[i * numHid + j]);
                             exit(EXIT_FAILURE);
                         }
                     }
