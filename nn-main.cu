@@ -121,7 +121,7 @@ void k_compute_output(float* output, float* delta_output, size_t numOut, float* 
 
     if (i < NUMHID)
     {
-        s_sum[i] = hidden[i] * weight_ho[blockIdx.x * blockDim.x + i];
+        s_sum[i] = hidden[i] * weight_ho[blockIdx.x * NUMHID + i];
     }
     else
     {
