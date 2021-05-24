@@ -193,7 +193,7 @@ void k_compute_delta_ho(float* delta, float* in_a, float* in_b)
 {
     size_t i = threadIdx.x;
     if (i < NUMHID)
-        delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
+        delta[blockIdx.x * blockDim.x + i] = d_eta * in_b[i] * in_a[blockIdx.x] + d_alpha * delta[blockIdx.x * blockDim.x + i];
 }
 
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
