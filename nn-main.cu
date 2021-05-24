@@ -391,7 +391,6 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 k_compute_output<<<numOut, 128>>>(d_output, d_delta_output, numOut, d_hidden, numHid, d_weight_ho, &d_target[p * NUMOUT]); 
                 cudaCheckErrors(cudaGetLastError());
 
-                // TODO: apply fix to this kernel too
                 k_compute_batch_error<<<1, 16>>>(d_batch_error, d_output, &d_target[p * NUMOUT]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
@@ -447,7 +446,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                     float SumDOW = 0.0;
                     for (int k = 0; k < numOut; k++)
                     {
-                        SumDOW += inv_WeightHO[j][k] * DeltaO[k];
+                        SumDOW += h_weight_ho[k * numHid + j] * DeltaO[k];
                     }
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
                     for (int i = 0; i < numIn; i++)
