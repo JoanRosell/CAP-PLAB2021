@@ -113,6 +113,54 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
     }
 }
 
+__global__ 
+void k_compute_output(float* output, float* delta_output, size_t numOut, float* const hidden, size_t numHid, float* const weight_ho, float* const target)
+{
+    __shared__ float s_sum[NUMIN]; 
+    size_t i = threadIdx.x;
+
+    s_sum[i] = hidden[i] * weight_ho[blockIdx.x * blockDim.x + i];
+    __syncthreads();
+
+    for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
+    {
+        if (i < s)
+        {
+            s_sum[i] += s_sum[i + s];
+        }
+
+        __syncthreads();
+    }
+
+    if (i == 0)
+    {
+        output[blockIdx.x] = 1.0 / (1.0 + exp(-s_sum[0]));
+        delta_output[blockIdx.x] = (target[blockIdx.x] - output[blockIdx.x]) * output[blockIdx.x] * (1.0 - output[blockIdx.x]);    // Sigmoidal Outputs, SSE
+    }
+}
+
+__global__
+void k_compute_batch_error(float* batch_error, float* output, float* target)
+{
+    __shared__ s_sum[NUMOUT];
+    size_t i = threadIdx.x;
+
+    s_sum[i] = 0.5 * (target[i] - output[i]) * (target[i] - output[i]);
+    for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
+    {
+        __syncthreads();
+        if (i < s)
+        {
+            s_sum[i] += s_sum[i + s];
+        }
+    }
+
+    if (i == 0)
+    {
+        *batch_error = s_sum[0];
+    }
+}
+
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
     char** tSet;
@@ -191,9 +239,53 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         }
     }
 
+    // Flatten WeightHO
+    float* h_weight_ho = (float*) malloc(numOut * numHid * sizeof(*h_weight_ho));
+    if (h_weight_ho == NULL)
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < numOut; i++)
+    {
+        for (int j = 0; j < numHid; j++)
+        {
+            h_weight_ho[i * numHid + j] = WeightHO[i][j];
+        }
+    }
+
+    // Malloc and copy the flattened WeightHO to the device
+    float* d_weight_ho;
+    cudaCheckErrors(cudaMalloc((void**) &d_weight_ho, numOut * numHid * sizeof(*d_weight_ho)));
+    cudaCheckErrors(cudaMemcpy(d_weight_ho, h_weight_ho, numOut * numHid * sizeof(*d_weight_ho), cudaMemcpyHostToDevice));
+
     // Malloc Hidden to the device
     float* d_hidden;
     cudaCheckErrors(cudaMalloc((void**) &d_hidden, numHid * sizeof(*d_hidden)));
+
+    // Malloc Output to the device
+    float* d_output;
+    cudaCheckErrors(cudaMalloc((void**) &d_output, numOut * sizeof(*d_output)));
+
+    // Malloc Delta Output to the device
+    float* d_delta_output;
+    cudaCheckErrors(cudaMalloc((void**) &d_delta_output, numOut * sizeof(*d_delta_output)));
+
+    // Flatten Target
+    float* h_target = (float*) malloc(NUMPAT * NUMOUT * sizeof(*h_target));
+    for (size_t i = 0; i < NUMPAT; i++)
+        for (size_t j = 0; j < NUMOUT; j++)
+            h_target[i * NUMOUT + j] = Target[i][j];
+
+    // Malloc and copy the Target
+    float* d_target;
+    cudaCheckErrors(cudaMalloc((void**) &d_target, NUMPAT * NUMOUT * sizeof(*d_target)));
+    cudaCheckErrors(cudaMemcpy(d_target, h_target, NUMPAT * NUMOUT * sizeof(*d_target), cudaMemcpyHostToDevice));
+
+    // Declare batch error in the device
+    float* d_batch_error;
+    cudaCheckErrors(cudaMalloc((void**) &d_batch_error, sizeof(*d_batch_error)));
 
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
@@ -239,9 +331,9 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                  */
                 k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
-                cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
 
 #ifdef DEBUG
+                cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
                 float test_hidden[NUMHID] = {0};
                 for (int j = 0; j < numHid; j++) // compute hidden unit activations
                 {
@@ -264,17 +356,28 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
 #endif
 
+                /*
                 for (int k = 0; k < numOut; k++) // compute output unit activations and errors
                 {
                     float SumO = 0.0;
                     for (int j = 0; j < numHid; j++)
                     {
-                        SumO += Hidden[j] * WeightHO[k][j];
+                        SumO += Hidden[j] * d_weight_ho[k][j];
                     }
                     Output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
                     BError   += 0.5 * (Target[p][k] - Output[k]) * (Target[p][k] - Output[k]); // SSE
                     DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Sigmoidal Outputs, SSE
                 }
+                */
+
+                k_compute_output<<<numOut, numHid>>>(d_output, d_delta_output, numOut, d_hidden, numHid, d_weight_ho, &d_target[p]); 
+                cudaCheckErrors(cudaGetLastError());
+
+                k_compute_batch_error<<<1, numOut>>>(d_batch_error, d_output, &d_target[p]);
+                cudaCheckErrors(cudaGetLastError());
+                cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
+                cudaCheckErrors(cudaMemcpy(DeltaO, d_delta_output, sizeof(*DeltaO) * numOut, cudaMemcpyDeviceToHost));
+                cudaCheckErrors(cudaMemcpy(&BError, d_batch_error, sizeof(BError), cudaMemcpyDeviceToHost));
 
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
@@ -313,10 +416,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 for (int j = 0; j < numHid; j++)
                 {
-                    WeightHO[k][j]    += DeltaWeightHO[k][j];
-                    inv_WeightHO[j][k] = WeightHO[k][j];
+                    h_weight_ho[k * numHid + j]    += DeltaWeightHO[k][j];
                 }
             }
+            cudaCheckErrors(cudaMemcpy(d_weight_ho, h_weight_ho, numOut * numHid * sizeof(*d_weight_ho), cudaMemcpyHostToDevice));
 
             Error += BError; // We only want to update Error once per iteration
         }
@@ -336,6 +439,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     for (size_t i = 0; i < numHid; i++)
         for (size_t j = 0; j < numIn; j++)
             WeightIH[i][j] = h_weight_ih[i * numIn + j];
+
+    for (size_t i = 0; i < numOut; i++)
+        for (size_t j = 0; j < numHid; j++)
+            WeightHO[i][j] = h_weight_ih[i * numHid + j];
 
     freeTSet(NUMPAT, tSet);
     free(h_training_set);
