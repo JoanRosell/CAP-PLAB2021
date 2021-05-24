@@ -504,7 +504,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
 
     for (size_t i = 0; i < numOut; i++)
         for (size_t j = 0; j < numHid; j++)
-            WeightHO[i][j] = h_weight_ih[i * numHid + j];
+            WeightHO[i][j] = h_weight_ho[i * numHid + j];
 
     freeTSet(NUMPAT, tSet);
     free(h_training_set);
