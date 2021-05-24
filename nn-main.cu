@@ -46,6 +46,11 @@ extern "C" {
 // Training set constant row to be used inside the kernels
 __constant__ char d_tset_buffer[1025];
 
+// Constants to calculate the different deltas
+__constant__ float d_eta = 0.3f;
+__constant__ float d_alpha = 0.5f;
+__constant__ float d_smallwt = 0.22f;
+
 // Macro to check CUDA errors from syscalls
 #define cudaCheckErrors(ans) { __cudaCheckErrors((ans), #ans, __FILE__, __LINE__); }
 inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char *file, int line, bool abort=true)
@@ -176,6 +181,16 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
     }
 }
 
+__global__
+void k_compute_delta(float* delta, size_t delta_size, float* in_a, float* in_b)
+{
+    size_t i = threadIdx.x;
+    if (i < delta_size)
+    {
+        delta[i] = d_eta * in_a[i] * in_b[i] + d_alpha * delta[i];
+    }
+}
+
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
 {
     char** tSet;
@@ -243,6 +258,26 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     cudaCheckErrors(cudaMalloc((void**) &d_weight_ih, numHid * numIn * sizeof(*d_weight_ih)));
     cudaCheckErrors(cudaMemcpy(d_weight_ih, h_weight_ih, numHid * numIn * sizeof(*d_weight_ih), cudaMemcpyHostToDevice));
 
+    // Flatten DeltaWeightIH
+    float* h_delta_weight_ih = (float*) malloc(numHid * numIn * sizeof(*h_delta_weight_ih));
+    if (h_delta_weight_ih == NULL)
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < numHid; i++)
+    {
+        for (int j = 0; j < numIn; j++)
+        {
+            h_delta_weight_ih[i * numIn + j] = DeltaWeightIH[i][j];
+        }
+    }
+
+    // Malloc and copy the flattened WeightIH to the device
+    float* d_delta_weight_ih;
+    cudaCheckErrors(cudaMalloc((void**) &d_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih)));
+    cudaCheckErrors(cudaMemcpy(d_delta_weight_ih, h_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyHostToDevice));
 
     // Init WeightHO
     for (int i = 0; i < numOut; i++)
@@ -303,6 +338,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     float* d_batch_error;
     cudaCheckErrors(cudaMalloc((void**) &d_batch_error, sizeof(*d_batch_error)));
 
+    // Malloc DeltaH in the device
+    float* d_delta_h; 
+    cudaCheckErrors(cudaMalloc((void**) &d_delta_h, numHid * sizeof(*d_delta_h)));
+
     Error = 10;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
@@ -335,18 +374,16 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 // This copy from global to const memory should be amortized by the next kernels, for now we will use global mem
                 //cudaCheckErrors(cudaMemcpyToSymbol(d_tset_buffer, &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
 
-// Kernel 1: Sequential
-/*
-for (int j = 0; j < numHid; j++) // compute hidden unit activations
-{
-float SumH = 0.0;
-for (int i = 0; i < numIn; i++)
-{
-SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
-}
-Hidden[j] = 1.0 / (1.0 + exp(-SumH));
-}
-                */
+                // Kernel 1: Sequential
+                for (int j = 0; j < numHid; j++) // compute hidden unit activations
+                {
+                    float SumH = 0.0;
+                    for (int i = 0; i < numIn; i++)
+                    {
+                        SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
+                    }
+                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                }
                 k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
@@ -449,12 +486,22 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                         SumDOW += h_weight_ho[k * numHid + j] * DeltaO[k];
                     }
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
+                }
+
+                /*
+                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+                {
                     for (int i = 0; i < numIn; i++)
                     {
-                        //DeltaWeightIH[j][i] = f_and(eta * DeltaH[j], tSet_msk[p * 1024 + i]) + alpha * DeltaWeightIH[j][i];
-                        DeltaWeightIH[j][i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * DeltaWeightIH[j][i];
+                        h_delta_weight_ih[j][i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * h_delta_weight_ih[j][i];
                     }
                 }
+                */
+
+                cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
+                k_compute_delta<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, d_training_set[p * 1025]);
+                cudaCheckErrors(cudaGetLastError());
+                cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
 
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
@@ -469,7 +516,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
             {
                 for (int i = 0; i < numIn; i++)
                 {
-                    h_weight_ih[j * numIn + i] += DeltaWeightIH[j][i];
+                    h_weight_ih[j * numIn + i] += h_delta_weight_ih[j * numIn + i];
                 }
             }
             cudaCheckErrors(cudaMemcpy(d_weight_ih, h_weight_ih, numHid * numIn * sizeof(*d_weight_ih), cudaMemcpyHostToDevice));
