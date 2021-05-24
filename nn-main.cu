@@ -182,10 +182,18 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
 }
 
 __global__
-void k_compute_delta_ih(float* delta, size_t delta_size, float* in_a, char* in_b)
+void k_compute_delta_ih(float* delta, float* in_a, char* in_b)
 {
     size_t i = threadIdx.x;
     delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
+}
+
+__global__
+void k_compute_delta_ho(float* delta, float* in_a, float* in_b)
+{
+    size_t i = threadIdx.x;
+    if (i < NUMHID)
+        delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
 }
 
 void trainN(const int epochs, const int numIn, const int numHid, const int numOut)
@@ -307,6 +315,27 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     float* d_weight_ho;
     cudaCheckErrors(cudaMalloc((void**) &d_weight_ho, numOut * numHid * sizeof(*d_weight_ho)));
     cudaCheckErrors(cudaMemcpy(d_weight_ho, h_weight_ho, numOut * numHid * sizeof(*d_weight_ho), cudaMemcpyHostToDevice));
+
+    // Flatten DeltaWeightHO
+    float* h_delta_weight_ho = (float*) malloc(numOut * numHid * sizeof(*h_delta_weight_ho));
+    if (h_delta_weight_ho == NULL)
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < numOut; i++)
+    {
+        for (int j = 0; j < numHid; j++)
+        {
+            h_delta_weight_ho[i * numHid + j] = DeltaWeightHO[i][j];
+        }
+    }
+
+    // Malloc and copy the flattened WeightIH to the device
+    float* d_delta_weight_ho;
+    cudaCheckErrors(cudaMalloc((void**) &d_delta_weight_ho, numOut * numHid * sizeof(*d_delta_weight_ho)));
+    cudaCheckErrors(cudaMemcpy(d_delta_weight_ho, h_delta_weight_ho, numOut * numHid * sizeof(*d_delta_weight_ho), cudaMemcpyHostToDevice));
 
     // Malloc Hidden to the device
     float* d_hidden;
@@ -486,7 +515,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 }
 
                 cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
-                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, &d_training_set[p * 1025]);
+                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, d_delta_h, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
                 
@@ -512,6 +541,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 }
                 #endif
 
+                /*
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
                     for (int j = 0; j < numHid; j++)
@@ -519,6 +549,10 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                         DeltaWeightHO[k][j] = eta * Hidden[j] * DeltaO[k] + alpha * DeltaWeightHO[k][j];
                     }
                 }
+                */
+                k_compute_delta_ho<<<numOut, 128>>>(d_delta_weight_ho, d_delta_output, d_hidden);
+                cudaCheckErrors(cudaGetLastError());
+                cudaCheckErrors(cudaMemcpy(h_delta_weight_ho, d_delta_weight_ho, numOut * numHid * sizeof(*d_delta_weight_ho), cudaMemcpyDeviceToHost));
             }
 
             for (int j = 0; j < numHid; j++) // update weights WeightIH
@@ -534,7 +568,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
             {
                 for (int j = 0; j < numHid; j++)
                 {
-                    h_weight_ho[k * numHid + j]    += DeltaWeightHO[k][j];
+                    h_weight_ho[k * numHid + j]    += h_delta_weight_ho[k * numHid + j];
                 }
             }
             cudaCheckErrors(cudaMemcpy(d_weight_ho, h_weight_ho, numOut * numHid * sizeof(*d_weight_ho), cudaMemcpyHostToDevice));
