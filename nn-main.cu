@@ -43,6 +43,9 @@ extern "C" {
     #include "common.h"
 }
 
+// Training set constant row to be used inside the kernels
+__constant__ char d_tset_buffer[1025];
+
 // Macro to check CUDA errors from syscalls
 #define cudaCheckErrors(ans) { __cudaCheckErrors((ans), #ans, __FILE__, __LINE__); }
 inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char *file, int line, bool abort=true)
@@ -139,7 +142,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         for (size_t j = 0; j < 1025; j++)
             h_training_set[i * 1025 + j] = tSet[i][j];
 
-    // Malloc and copy the flattened training set to the device
+    // Training set
     char* d_training_set;
     cudaCheckErrors(cudaMalloc((void**) &d_training_set, NUMPAT * 1025 * sizeof(*d_training_set)));
     cudaCheckErrors(cudaMemcpy(d_training_set, h_training_set, NUMPAT * 1025 * sizeof(*d_training_set), cudaMemcpyHostToDevice));
@@ -219,6 +222,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 int p = ranpat[np];
 
+                cudaCheckErrors(cudaMemcpyToSymbol("d_tset_buffer", &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
                 /*
                    for (int j = 0; j < numHid; j++) // compute hidden unit activations
                    {
@@ -231,7 +235,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                    }
                  */
 
-                k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
+                k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, d_tset_buffer);
                 cudaError_t errSync  = cudaGetLastError();
                 if (errSync != cudaSuccess) 
                 {
