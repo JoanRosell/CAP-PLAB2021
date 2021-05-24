@@ -116,10 +116,17 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
 __global__ 
 void k_compute_output(float* output, float* delta_output, size_t numOut, float* const hidden, size_t numHid, float* const weight_ho, float* const target)
 {
-    __shared__ float s_sum[NUMIN]; 
+    __shared__ float s_sum[128]; 
     size_t i = threadIdx.x;
 
-    s_sum[i] = hidden[i] * weight_ho[blockIdx.x * blockDim.x + i];
+    if (i < NUMHID)
+    {
+        s_sum[i] = hidden[i] * weight_ho[blockIdx.x * blockDim.x + i];
+    }
+    else
+    {
+        s_sum[i] = 0.0f;
+    }
     __syncthreads();
 
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
@@ -373,7 +380,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
 }
                 */
 
-                k_compute_output<<<numOut, numHid>>>(d_output, d_delta_output, numOut, d_hidden, numHid, d_weight_ho, &d_target[p]); 
+                k_compute_output<<<numOut, 128>>>(d_output, d_delta_output, numOut, d_hidden, numHid, d_weight_ho, &d_target[p]); 
                 cudaCheckErrors(cudaGetLastError());
 
                 k_compute_batch_error<<<1, numOut>>>(d_batch_error, d_output, &d_target[p]);
