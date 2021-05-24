@@ -499,7 +499,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 */
 
                 cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
-                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, d_training_set[p * 1025]);
+                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
 
