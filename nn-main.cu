@@ -149,10 +149,18 @@ void k_compute_output(float* output, float* delta_output, size_t numOut, float* 
 __global__
 void k_compute_batch_error(float* batch_error, float* output, float* target)
 {
-    __shared__ float s_sum[NUMOUT];
+    __shared__ float s_sum[16];
     size_t i = threadIdx.x;
 
-    s_sum[i] = 0.5 * (target[i] - output[i]) * (target[i] - output[i]);
+    if (i < NUMOUT)
+    {
+        s_sum[i] = 0.5 * (target[i] - output[i]) * (target[i] - output[i]);
+    }
+    else
+    {
+        s_sum[i] = 0.0f;
+    }
+
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
     {
         __syncthreads();
@@ -384,7 +392,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 cudaCheckErrors(cudaGetLastError());
 
                 // TODO: apply fix to this kernel too
-                k_compute_batch_error<<<1, numOut>>>(d_batch_error, d_output, &d_target[p * NUMOUT]);
+                k_compute_batch_error<<<1, 16>>>(d_batch_error, d_output, &d_target[p * NUMOUT]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
                 cudaCheckErrors(cudaMemcpy(DeltaO, d_delta_output, sizeof(*DeltaO) * numOut, cudaMemcpyDeviceToHost));
