@@ -182,7 +182,7 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
 }
 
 __global__
-void k_compute_delta(float* delta, size_t delta_size, float* in_a, float* in_b)
+void k_compute_delta_ih(float* delta, size_t delta_size, float* in_a, char* in_b)
 {
     size_t i = threadIdx.x;
     if (i < delta_size)
@@ -499,7 +499,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 */
 
                 cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
-                k_compute_delta<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, d_training_set[p * 1025]);
+                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
 
