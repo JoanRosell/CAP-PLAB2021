@@ -485,20 +485,32 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
                 }
 
-                /*
-                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
-                {
-                    for (int i = 0; i < numIn; i++)
-                    {
-                        h_delta_weight_ih[j][i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * h_delta_weight_ih[j][i];
-                    }
-                }
-                */
-
                 cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
                 k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, numIn, d_delta_h, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
+                
+                #ifdef DEBUG
+                float* test_delta_ih = (float*) malloc(numHid * numIn * sizeof(*test_delta_ih));
+                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+                {
+                    for (int i = 0; i < numIn; i++)
+                    {
+                        test_delta_ih[j * numIn + i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * test_delta_ih[j * numIn + i];
+                    }
+                }
+
+                for (size_t i = 0; i < numHid; i++)
+                {
+                    for (size_t j = 0; j < numIn; j++)
+                    if (abs(h_delta_weight_ih[i * numIn + j] - test_delta_ih[i * numIn + j]) > 0.0001f)
+                    {
+                        printf("GPU error while computing DeltaWeightIH @ idx: %lu\n", i * numIn + j);
+                        printf("\tCPU val: %f\n\tGPU val: %f\n", test_delta_ih[i * numIn + j], h_delta_weight_ih[i * numIn + j]);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                #endif
 
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
