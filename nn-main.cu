@@ -187,7 +187,7 @@ void k_compute_delta_ih(float* delta, size_t delta_size, float* in_a, char* in_b
     size_t i = threadIdx.x;
     if (i < delta_size)
     {
-        delta[i] = d_eta * in_a[i] * in_b[i] + d_alpha * delta[i];
+        delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[i] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
     }
 }
 
