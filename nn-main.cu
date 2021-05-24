@@ -418,10 +418,10 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                     }
                 }
 
-                if (abs(BError[i] - test_batch_error) > 0.0001f)
+                if (abs(BError - test_batch_error) > 0.0001f)
                 {
                     printf("GPU error while computing BError\n");
-                    printf("\tCPU val: %f\n\tGPU val: %f\n", test_batch_error[i], BError);
+                    printf("\tCPU val: %f\n\tGPU val: %f\n", test_batch_error, BError);
                     exit(EXIT_FAILURE);
                 }
                 #endif
