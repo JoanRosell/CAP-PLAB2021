@@ -383,6 +383,7 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 k_compute_output<<<numOut, 128>>>(d_output, d_delta_output, numOut, d_hidden, numHid, d_weight_ho, &d_target[p]); 
                 cudaCheckErrors(cudaGetLastError());
 
+                // TODO: apply fix to this kernel too
                 k_compute_batch_error<<<1, numOut>>>(d_batch_error, d_output, &d_target[p]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
@@ -401,8 +402,8 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                         SumO += Hidden[j] * WeightHO[k][j];
                     }
                     test_output[k] = 1.0 / (1.0 + exp(-SumO));                                      // Sigmoidal Outputs
-                    test_batch_error   += 0.5 * (Target[p][k] - test_output[k]) * (Target[p][k] - test_output[k]); // SSE
-                    test_delta_output[k] = (Target[p][k] - test_output[k]) * test_output[k] * (1.0 - test_output[k]);    // Sigmoidal Outputs, SSE
+                    test_batch_error   += 0.5 * (h_target[p * NUMOUT + k] - test_output[k]) * (h_target[p * NUMOUT + k] - test_output[k]); // SSE
+                    test_delta_output[k] = (h_target[p * NUMOUT + k] - test_output[k]) * test_output[k] * (1.0 - test_output[k]);    // Sigmoidal Outputs, SSE
                 }
 
                 for (size_t i = 0; i < numOut; i++)
