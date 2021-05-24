@@ -233,12 +233,14 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
 
     // Init WeightIH
+    float* test_delta_ih = (float*) malloc(numHid * numIn * sizeof(*test_delta_ih));
     for (int i = 0; i < numHid; i++)
     {
         for (int j = 0; j < numIn; j++)
         {
             WeightIH[i][j]      = 2.0 * (frando() + 0.01) * smallwt;
             DeltaWeightIH[i][j] = 0.0;
+            test_delta_ih[i * numIn + j] = 0.0;
         }
     }
 
@@ -520,7 +522,6 @@ DeltaO[k] = (Target[p][k] - Output[k]) * Output[k] * (1.0 - Output[k]);    // Si
                 cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
                 
                 #ifdef DEBUG
-                float* test_delta_ih = (float*) malloc(numHid * numIn * sizeof(*test_delta_ih));
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
                     for (int i = 0; i < numIn; i++)
