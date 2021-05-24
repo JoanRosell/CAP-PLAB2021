@@ -59,7 +59,7 @@ inline void __cudaCheckErrors(cudaError_t code, const char* call_str, const char
         {
             *paren_ptr = '\0';
         }
-        fprintf(stderr,"%s: %s %s:%d\n", func_name, cudaGetErrorString(code), file, line);
+        fprintf(stderr,"%s: [%s] %s %s:%d\n", func_name, cudaGetErrorName(code), cudaGetErrorString(code), file, line);
         if (abort) exit(code);
     }
 }
@@ -222,7 +222,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             {
                 int p = ranpat[np];
 
-                cudaCheckErrors(cudaMemcpyToSymbol("d_tset_buffer", &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
+                // This copy from global to const memory should be amortized by the next kernels, for now we will use global mem
+                //cudaCheckErrors(cudaMemcpyToSymbol(d_tset_buffer, &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
+
+                // Kernel 1: Sequential
                 /*
                    for (int j = 0; j < numHid; j++) // compute hidden unit activations
                    {
@@ -234,15 +237,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                    }
                  */
-
-                k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, d_tset_buffer);
-                cudaError_t errSync  = cudaGetLastError();
-                if (errSync != cudaSuccess) 
-                {
-                    printf("\nSync kernel error: %s\n", cudaGetErrorString(errSync));
-                    exit(EXIT_FAILURE);
-                }
-
+                k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
+                cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
 
 #ifdef DEBUG
@@ -251,8 +247,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 {
                     float SumH = 0.0f;
                     for (int i = 0; i < numIn; i++)
-                    {
-                        SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
+                {
+                    SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
                     }
                     test_hidden[j] = 1.0f / (1.0f + exp(-SumH));
                 }
