@@ -142,7 +142,7 @@ void k_compute_output(float* output, float* delta_output, size_t numOut, float* 
 __global__
 void k_compute_batch_error(float* batch_error, float* output, float* target)
 {
-    __shared__ s_sum[NUMOUT];
+    __shared__ float s_sum[NUMOUT];
     size_t i = threadIdx.x;
 
     s_sum[i] = 0.5 * (target[i] - output[i]) * (target[i] - output[i]);
@@ -306,6 +306,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         printf(".");
         fflush(stdout);
 
+        float tmp_batch_error;
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
         {
@@ -377,7 +378,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
                 cudaCheckErrors(cudaMemcpy(DeltaO, d_delta_output, sizeof(*DeltaO) * numOut, cudaMemcpyDeviceToHost));
-                cudaCheckErrors(cudaMemcpy(&BError, d_batch_error, sizeof(BError), cudaMemcpyDeviceToHost));
+                cudaCheckErrors(cudaMemcpy(&tmp_batch_error, d_batch_error, sizeof(BError), cudaMemcpyDeviceToHost));
+                BError += tmp_batch_error;
 
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
