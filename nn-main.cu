@@ -208,9 +208,9 @@ void k_update_weights(float* weights, float* deltas, size_t row_size, size_t col
 {
     size_t i = blockIdx.x;
     size_t j = threadIdx.x;
-    if (i < col_size && j < row_size) // The j check is mandatory, the i check is made just in case we decide to use higher block counts
+    if (j < col_size) // The j check is mandatory, the i check is made just in case we decide to use higher block counts
     {
-        weights[i * row_size + j] += deltas[i * row_size + j];
+        weights[i * col_size + j] += deltas[i * col_size + j];
     }
 }
 
@@ -646,17 +646,26 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             k_update_weights<<<numOut, 128>>>(d_weight_ho, d_delta_weight_ho, numOut, numHid);
             cudaCheckErrors(cudaGetLastError());
             // Required until the remaining kernels are developed
+            cudaCheckErrors(cudaMemcpy(h_weight_ih, d_weight_ih, numHid * numIn * sizeof(*h_weight_ih), cudaMemcpyDeviceToHost));
             cudaCheckErrors(cudaMemcpy(h_weight_ho, d_weight_ho, numOut * numHid * sizeof(*h_weight_ho), cudaMemcpyDeviceToHost));
-            /*
+            #ifdef DEBUG
+            float test_weight_ho[NUMOUT][NUMHID];
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
                 for (int j = 0; j < numHid; j++)
                 {
-                    h_weight_ho[k * numHid + j] += h_delta_weight_ho[k * numHid + j];
+                    test_weight_ho[k * numHid + j] += h_delta_weight_ho[k * numHid + j];
                 }
             }
-            cudaCheckErrors(cudaMemcpy(d_weight_ho, h_weight_ho, numOut * numHid * sizeof(*d_weight_ho), cudaMemcpyHostToDevice));
-            */
+
+            for (int k = 0; k < numOut; k++) // update weights WeightHO
+            {
+                for (int j = 0; j < numHid; j++)
+                {
+                    test_weight_ho[k * numHid + j] += h_delta_weight_ho[k * numHid + j];
+                }
+            }
+            #endif
 
             Error += BError; // We only want to update Error once per iteration
         }
