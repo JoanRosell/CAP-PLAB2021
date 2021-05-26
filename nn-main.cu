@@ -505,12 +505,14 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
                 k_compute_batch_error<<<1, 16>>>(d_batch_error, d_output, &d_target[p * NUMOUT]);
                 cudaCheckErrors(cudaGetLastError());
-                cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
-                cudaCheckErrors(cudaMemcpy(DeltaO, d_delta_output, sizeof(*DeltaO) * numOut, cudaMemcpyDeviceToHost));
                 cudaCheckErrors(cudaMemcpy(&tmp_batch_error, d_batch_error, sizeof(BError), cudaMemcpyDeviceToHost));
                 BError += tmp_batch_error;
 
+                // Required until the remaining kernels are implemented
+                cudaCheckErrors(cudaMemcpy(DeltaO, d_delta_output, sizeof(*DeltaO) * numOut, cudaMemcpyDeviceToHost));
+
                 #ifdef DEBUG
+                cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
                 float test_output[NUMOUT];
                 float test_delta_output[NUMOUT];
                 for (int k = 0; k < numOut; k++) // compute output unit activations and errors
@@ -566,9 +568,9 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
                 k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, d_delta_h, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
-                cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
 
                 #ifdef DEBUG
+                cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
                 for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
                     for (int i = 0; i < numIn; i++)
@@ -602,9 +604,9 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                  */
                 k_compute_delta_ho<<<numOut, 128>>>(d_delta_weight_ho, d_delta_output, d_hidden);
                 cudaCheckErrors(cudaGetLastError());
-                cudaCheckErrors(cudaMemcpy(h_delta_weight_ho, d_delta_weight_ho, numOut * numHid * sizeof(*d_delta_weight_ho), cudaMemcpyDeviceToHost));
 
                 #ifdef DEBUG
+                cudaCheckErrors(cudaMemcpy(h_delta_weight_ho, d_delta_weight_ho, numOut * numHid * sizeof(*d_delta_weight_ho), cudaMemcpyDeviceToHost));
                 for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
                 {
                     for (int j = 0; j < numHid; j++)
@@ -643,6 +645,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
             k_update_weights<<<numOut, 128>>>(d_weight_ho, d_delta_weight_ho, numOut, numHid);
             cudaCheckErrors(cudaGetLastError());
+            // Required until the remaining kernels are developed
+            cudaCheckErrors(cudaMemcpy(h_weight_ho, d_weight_ho, numOut * numHid * sizeof(*h_weight_ho), cudaMemcpyDeviceToHost));
             /*
             for (int k = 0; k < numOut; k++) // update weights WeightHO
             {
