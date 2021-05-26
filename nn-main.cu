@@ -97,12 +97,12 @@ void freeTSet(int np, char** tset)
 }
 
 __global__
-void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, char* const tset)
+void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, char* tset)
 {
     __shared__ float s_sum[NUMIN];
     size_t           i = threadIdx.x;
 
-    s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
+    s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * d_tset_buffer[i];
     __syncthreads();
 
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
@@ -189,7 +189,7 @@ void k_compute_delta_ih(float* delta, float* in_a, char* in_b)
 {
     size_t i = threadIdx.x;
 
-    delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
+    delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * d_tset_buffer[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
 }
 
 __global__
@@ -446,7 +446,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 int p = ranpat[np];
 
                 // This copy from global to const memory should be amortized by the next kernels, for now we will use global mem
-                //cudaCheckErrors(cudaMemcpyToSymbol(d_tset_buffer, &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
+                cudaCheckErrors(cudaMemcpyToSymbol(d_tset_buffer, &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
 
                 // Kernel 1: Sequential
                 /*
@@ -460,6 +460,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     Hidden[j] = 1.0 / (1.0 + exp(-SumH));
                 }
                 */
+                //k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
                 k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
                 cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
