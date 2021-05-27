@@ -184,6 +184,39 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
     }
 }
 
+
+
+
+
+__global__
+void k_update_delta_ih(int numOut, int numhid, float* weight_ho, float* delta_o, float* delta_h, float* hidden){
+    __shared__ float s_sumdow[16];
+    size_t i = threadIdx.x;
+
+    if(i < numOut){
+        s_sumdow[i] = weight_ho[i * blockDim.x + blockIdx.x] * delta_o[i];
+    }
+    else{
+        s_sumdow[i] = 0.0f;
+    }
+    //__syncthreads();
+
+    for(size_t s = blockDim.x / 2; s > 0; s >>= 1){
+        if(i < s){
+            s_sumdow[i] += s_sumdow[i + s];
+        }
+        __syncthreads();
+    }
+
+    if(i == 0){
+        delta_h[blockDim.x] = s_sumdow[0] * hidden[blockIdx.x] * (1.0 - hidden[blockIdx.x]);
+    }
+}
+
+
+
+
+
 __global__
 void k_compute_delta_ih(float* delta, float* in_a, char* in_b)
 {
@@ -556,7 +589,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 }
                 #endif
 
-                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+                /*
+		for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
                 {
                     float SumDOW = 0.0;
                     for (int k = 0; k < numOut; k++)
@@ -565,6 +599,11 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                     }
                     DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
                 }
+		*/
+
+		k_update_delta_ih<<<numHid, 16>>>(numHid, numOut, d_weight_ho, d_delta_output, d_delta_h, d_hidden);
+		cudaCheckErrors(cudaGetLastError());
+
 
                 cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
                 k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, d_delta_h, &d_training_set[p * 1025]);
