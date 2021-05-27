@@ -189,12 +189,12 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
 
 
 __global__
-void k_update_delta_ih(int numOut, int numhid, float* weight_ho, float* delta_o, float* delta_h, float* hidden){
+void k_update_delta_ih(int numhid, int numOut, float* weight_ho, float* delta_o, float* delta_h, float* hidden){
     __shared__ float s_sumdow[16];
     size_t i = threadIdx.x;
 
     if(i < numOut){
-        s_sumdow[i] = weight_ho[i * blockDim.x + blockIdx.x] * delta_o[i];
+        s_sumdow[i] = weight_ho[i * numhid + blockIdx.x] * delta_o[i];
     }
     else{
         s_sumdow[i] = 0.0f;
@@ -209,7 +209,7 @@ void k_update_delta_ih(int numOut, int numhid, float* weight_ho, float* delta_o,
     }
 
     if(i == 0){
-        delta_h[blockDim.x] = s_sumdow[0] * hidden[blockIdx.x] * (1.0 - hidden[blockIdx.x]);
+        delta_h[blockIdx.x] = s_sumdow[0] * hidden[blockIdx.x] * (1.0 - hidden[blockIdx.x]);
     }
 }
 
@@ -473,53 +473,24 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
         {
             BError           = 0.0;
-            test_batch_error = 0.0f;
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
             {
                 int p = ranpat[np];
 
-                // This copy from global to const memory should be amortized by the next kernels, for now we will use global mem
-                cudaCheckErrors(cudaMemcpyToSymbol(d_tset_buffer, &d_training_set[p * 1025], 1025 * sizeof(*d_training_set), 0, cudaMemcpyDeviceToDevice));
-
                 // Kernel 1: Sequential
                 /*
-                for (int j = 0; j < numHid; j++) // compute hidden unit activations
-                {
-                    float SumH = 0.0;
-                    for (int i = 0; i < numIn; i++)
-                    {
-                        SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
-                    }
-                    Hidden[j] = 1.0 / (1.0 + exp(-SumH));
-                }
-                */
-                //k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
+                   for (int j = 0; j < numHid; j++) // compute hidden unit activations
+                   {
+                   float SumH = 0.0;
+                   for (int i = 0; i < numIn; i++)
+                   {
+                   SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
+                   }
+                   Hidden[j] = 1.0 / (1.0 + exp(-SumH));
+                   }
+                 */
                 k_compute_hidden<<<numHid, numIn>>>(d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
                 cudaCheckErrors(cudaGetLastError());
-                cudaCheckErrors(cudaMemcpy(Hidden, d_hidden, sizeof(*Hidden) * NUMHID, cudaMemcpyDeviceToHost));
-
-                #ifdef DEBUG
-                float test_hidden[NUMHID] = {0};
-                for (int j = 0; j < numHid; j++) // compute hidden unit activations
-                {
-                    float SumH = 0.0f;
-                    for (int i = 0; i < numIn; i++)
-                    {
-                        SumH += h_weight_ih[j * numIn + i] * h_training_set[p * 1025 + i];
-                    }
-                    test_hidden[j] = 1.0f / (1.0f + exp(-SumH));
-                }
-
-                for (size_t h = 0; h < numHid; h++)
-                {
-                    if (abs(Hidden[h] - test_hidden[h]) > 0.0001f)
-                    {
-                        printf("GPU error while computing HIDDEN @ idx: %lu\n", h);
-                        printf("\tCPU val: %f\n\tGPU val: %f\n", test_hidden[h], Hidden[h]);
-                        exit(EXIT_FAILURE);
-                    }
-                }
-                #endif
 
                 /*
                  * for (int k = 0; k < numOut; k++) // compute output unit activations and errors
@@ -542,96 +513,23 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 cudaCheckErrors(cudaMemcpy(&tmp_batch_error, d_batch_error, sizeof(BError), cudaMemcpyDeviceToHost));
                 BError += tmp_batch_error;
 
-                // Required until the remaining kernels are implemented
-                cudaCheckErrors(cudaMemcpy(DeltaO, d_delta_output, sizeof(*DeltaO) * numOut, cudaMemcpyDeviceToHost));
-
-                #ifdef DEBUG
-                cudaCheckErrors(cudaMemcpy(Output, d_output, sizeof(*Output) * numOut, cudaMemcpyDeviceToHost));
-                float test_output[NUMOUT];
-                float test_delta_output[NUMOUT];
-                for (int k = 0; k < numOut; k++) // compute output unit activations and errors
-                {
-                    float SumO = 0.0;
-                    for (int j = 0; j < numHid; j++)
-                    {
-                        SumO += Hidden[j] * h_weight_ho[k * numHid + j];
-                    }
-                    test_output[k]       = 1.0 / (1.0 + exp(-SumO));                                                                        // Sigmoidal Outputs
-                    test_batch_error    += 0.5 * (h_target[p * NUMOUT + k] - test_output[k]) * (h_target[p * NUMOUT + k] - test_output[k]); // SSE
-                    test_delta_output[k] = (h_target[p * NUMOUT + k] - test_output[k]) * test_output[k] * (1.0 - test_output[k]);           // Sigmoidal Outputs, SSE
-                }
-
-                for (size_t i = 0; i < numOut; i++)
-                {
-                    if (abs(Output[i] - test_output[i]) > 0.0001f)
-                    {
-                        printf("GPU error while computing Output @ idx: %lu\n", i);
-                        printf("\tCPU val: %f\n\tGPU val: %f\n", test_output[i], Output[i]);
-                        exit(EXIT_FAILURE);
-                    }
-                }
-
-                for (size_t i = 0; i < numOut; i++)
-                {
-                    if (abs(DeltaO[i] - test_delta_output[i]) > 0.0001f)
-                    {
-                        printf("GPU error while computing DeltaO @ idx: %lu\n", i);
-                        printf("\tCPU val: %f\n\tGPU val: %f\n", test_delta_output[i], DeltaO[i]);
-                        exit(EXIT_FAILURE);
-                    }
-                }
-
-                if (abs(BError - test_batch_error) > 0.0001f)
-                {
-                    printf("GPU error while computing BError\n");
-                    printf("\tCPU val: %f\n\tGPU val: %f\n", test_batch_error, BError);
-                    exit(EXIT_FAILURE);
-                }
-                #endif
-
                 /*
-		for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
-                {
-                    float SumDOW = 0.0;
-                    for (int k = 0; k < numOut; k++)
-                    {
-                        SumDOW += h_weight_ho[k * numHid + j] * DeltaO[k];
-                    }
-                    DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
-                }
-		*/
+                   for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
+                   {
+                   float SumDOW = 0.0;
+                   for (int k = 0; k < numOut; k++)
+                   {
+                   SumDOW += h_weight_ho[k * numHid + j] * DeltaO[k];
+                   }
+                   DeltaH[j] = SumDOW * Hidden[j] * (1.0 - Hidden[j]);
+                   }
+                 */
 
-		k_update_delta_ih<<<numHid, 16>>>(numHid, numOut, d_weight_ho, d_delta_output, d_delta_h, d_hidden);
-		cudaCheckErrors(cudaGetLastError());
-
-
-                cudaCheckErrors(cudaMemcpy(d_delta_h, DeltaH, numHid * sizeof(*d_delta_h), cudaMemcpyHostToDevice));
-                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, d_delta_h, &d_training_set[p * 1025]);
+                k_update_delta_ih<<<numHid, 16>>>(numHid, numOut, d_weight_ho, d_delta_output, d_delta_h, d_hidden);
                 cudaCheckErrors(cudaGetLastError());
 
-                #ifdef DEBUG
-                cudaCheckErrors(cudaMemcpy(h_delta_weight_ih, d_delta_weight_ih, numHid * numIn * sizeof(*d_delta_weight_ih), cudaMemcpyDeviceToHost));
-                for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
-                {
-                    for (int i = 0; i < numIn; i++)
-                    {
-                        test_delta_ih[j * numIn + i] = eta * DeltaH[j] * h_training_set[p * 1025 + i] + alpha * test_delta_ih[j * numIn + i];
-                    }
-                }
-
-                for (size_t i = 0; i < numHid; i++)
-                {
-                    for (size_t j = 0; j < numIn; j++)
-                    {
-                        if (abs(h_delta_weight_ih[i * numIn + j] - test_delta_ih[i * numIn + j]) > 0.0001f)
-                        {
-                            printf("GPU error while computing DeltaWeightIH @ idx: %lu\n", i * numIn + j);
-                            printf("\tCPU val: %f\n\tGPU val: %f\n", test_delta_ih[i * numIn + j], h_delta_weight_ih[i * numIn + j]);
-                            exit(EXIT_FAILURE);
-                        }
-                    }
-                }
-                #endif
+                k_compute_delta_ih<<<numHid, numIn>>>(d_delta_weight_ih, d_delta_h, &d_training_set[p * 1025]);
+                cudaCheckErrors(cudaGetLastError());
 
                 /*
                  * for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
@@ -644,30 +542,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                  */
                 k_compute_delta_ho<<<numOut, 128>>>(d_delta_weight_ho, d_delta_output, d_hidden);
                 cudaCheckErrors(cudaGetLastError());
-
-                #ifdef DEBUG
-                cudaCheckErrors(cudaMemcpy(h_delta_weight_ho, d_delta_weight_ho, numOut * numHid * sizeof(*d_delta_weight_ho), cudaMemcpyDeviceToHost));
-                for (int k = 0; k < numOut; k++) // update delta weights DeltaWeightHO
-                {
-                    for (int j = 0; j < numHid; j++)
-                    {
-                        test_delta_ho[k * numHid + j] = eta * Hidden[j] * DeltaO[k] + alpha * test_delta_ho[k * numHid + j];
-                    }
-                }
-
-                for (int i = 0; i < numOut; i++) // update delta weights DeltaWeightHO
-                {
-                    for (int j = 0; j < numHid; j++)
-                    {
-                        if (abs(h_delta_weight_ho[i * numHid + j] - test_delta_ho[i * numHid + j]) > 0.0001f)
-                        {
-                            printf("GPU error while computing DeltaWeightHO @ idx: %lu\n", i * numHid + j);
-                            printf("\tCPU val: %f\n\tGPU val: %f\n", test_delta_ho[i * numHid + j], h_delta_weight_ho[i * numHid + j]);
-                            exit(EXIT_FAILURE);
-                        }
-                    }
-                }
-                #endif
             }
 
             k_update_weights<<<numHid, numIn>>>(d_weight_ih, d_delta_weight_ih, numHid, numIn);
@@ -685,27 +559,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
             k_update_weights<<<numOut, 128>>>(d_weight_ho, d_delta_weight_ho, numOut, numHid);
             cudaCheckErrors(cudaGetLastError());
-            // Required until the remaining kernels are developed
-            cudaCheckErrors(cudaMemcpy(h_weight_ih, d_weight_ih, numHid * numIn * sizeof(*h_weight_ih), cudaMemcpyDeviceToHost));
-            cudaCheckErrors(cudaMemcpy(h_weight_ho, d_weight_ho, numOut * numHid * sizeof(*h_weight_ho), cudaMemcpyDeviceToHost));
-            #ifdef DEBUG
-            float test_weight_ho[NUMOUT][NUMHID];
-            for (int k = 0; k < numOut; k++) // update weights WeightHO
-            {
-                for (int j = 0; j < numHid; j++)
-                {
-                    test_weight_ho[k * numHid + j] += h_delta_weight_ho[k * numHid + j];
-                }
-            }
-
-            for (int k = 0; k < numOut; k++) // update weights WeightHO
-            {
-                for (int j = 0; j < numHid; j++)
-                {
-                    test_weight_ho[k * numHid + j] += h_delta_weight_ho[k * numHid + j];
-                }
-            }
-            #endif
 
             Error += BError; // We only want to update Error once per iteration
         }
