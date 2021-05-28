@@ -30,6 +30,6 @@ export CC=$(which nvcc)
 
 ./compile.sh
 
-nsys nvprof --print-gpu-trace build/CAP-PLAB2021.exe $epochs >> $filename.prof
-#build/CAP-PLAB2021.exe $epochs
+#nsys nvprof --print-gpu-trace build/CAP-PLAB2021.exe $epochs >> $filename.prof
+build/CAP-PLAB2021.exe $epochs
 

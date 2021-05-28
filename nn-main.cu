@@ -102,7 +102,7 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
     __shared__ float s_sum[NUMIN];
     size_t           i = threadIdx.x;
 
-    s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * d_tset_buffer[i];
+    s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
     __syncthreads();
 
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
@@ -184,10 +184,6 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
     }
 }
 
-
-
-
-
 __global__
 void k_update_delta_ih(int numhid, int numOut, float* weight_ho, float* delta_o, float* delta_h, float* hidden){
     __shared__ float s_sumdow[16];
@@ -199,7 +195,7 @@ void k_update_delta_ih(int numhid, int numOut, float* weight_ho, float* delta_o,
     else{
         s_sumdow[i] = 0.0f;
     }
-    //__syncthreads();
+    __syncthreads();
 
     for(size_t s = blockDim.x / 2; s > 0; s >>= 1){
         if(i < s){
@@ -222,7 +218,7 @@ void k_compute_delta_ih(float* delta, float* in_a, char* in_b)
 {
     size_t i = threadIdx.x;
 
-    delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * d_tset_buffer[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
+    delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
 }
 
 __global__
