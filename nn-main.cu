@@ -161,30 +161,19 @@ void k_compute_output(float* output, float* delta_output, size_t numOut, float* 
 __global__
 void k_compute_batch_error(float* batch_error, float* output, float* target)
 {
-    __shared__ float s_sum[16];
-    size_t           i = threadIdx.x;
-
+    size_t i = threadIdx.x;
+    float val = 0.0f;
     if (i < NUMOUT)
     {
-        s_sum[i] = 0.5 * (target[i] - output[i]) * (target[i] - output[i]);
-    }
-    else
-    {
-        s_sum[i] = 0.0f;
+        val = 0.5 * (target[i] - output[i]) * (target[i] - output[i]);
     }
 
-    for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
-    {
-        __syncthreads();
-        if (i < s)
-        {
-            s_sum[i] += s_sum[i + s];
-        }
-    }
+    for (int offset = 16; offset > 0; offset /= 2)
+        val += __shfl_down(val, offset);
 
     if (i == 0)
     {
-        atomicAdd(batch_error, s_sum[0]);
+        atomicAdd(batch_error, val);
     }
 }
 
@@ -485,7 +474,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
                 int p = ranpat[np];
                 k_compute_hidden << < numHid, numIn >> > (d_hidden, NUMHID, d_weight_ih, NUMIN, &d_training_set[p * 1025]);
                 k_compute_output << < numOut, 128 >> > (d_output, d_delta_output, numOut, d_hidden, numHid, d_weight_ho, &d_target[p * NUMOUT]);
-                k_compute_batch_error << < 1, 16 >> > (d_batch_error, d_output, &d_target[p * NUMOUT]);
+                k_compute_batch_error << < 1, 32 >> > (d_batch_error, d_output, &d_target[p * NUMOUT]);
                 k_compute_delta_h << < numHid, 16 >> > (numHid, numOut, d_weight_ho, d_delta_output, d_delta_h, d_hidden);
                 k_compute_delta_ih << < numHid, numIn >> > (d_delta_weight_ih, d_delta_h, &d_training_set[p * 1025]);
                 k_compute_delta_ho << < numOut, 128 >> > (d_delta_weight_ho, d_delta_output, d_hidden);
