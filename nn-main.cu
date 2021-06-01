@@ -104,13 +104,43 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
 
     s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
 
-    for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
+    for (size_t s = blockDim.x / 2; s > 32; s >>= 1)
     {
         __syncthreads();
         if (i < s)
         {
             s_sum[i] += s_sum[i + s];
         }
+    }
+
+    size_t t = s;
+    if (t < 32)
+    {
+        float v = 0;
+        v += s_sum[t + 32];
+        __syncwarp();
+        s_sum[t] += v;
+        __syncwarp();
+        v += s_sum[t + 16];
+        __syncwarp();
+        s_sum[t] += v;
+        __syncwarp();
+        v += s_sum[t + 8];
+        __syncwarp();
+        s_sum[t] += v;
+        __syncwarp();
+        v += s_sum[t + 4];
+        __syncwarp();
+        s_sum[t] += v;
+        __syncwarp();
+        v += s_sum[t + 2];
+        __syncwarp();
+        s_sum[t] += v;
+        __syncwarp();
+        v += s_sum[t + 1];
+        __syncwarp();
+        s_sum[t] += v;
+        __syncwarp();
     }
 
     if (i == 0)
@@ -449,6 +479,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
     Error = 10;
     float h_batch_error;
+
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
         for (int p = 0; p < NUMPAT; p++)                            // randomize order of individuals
