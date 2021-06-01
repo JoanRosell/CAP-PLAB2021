@@ -99,12 +99,13 @@ void freeTSet(int np, char** tset)
 __global__
 void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size_t numIn, char* tset)
 {
-    __shared__ float s_sum[NUMIN];
+    static __shared__ float s_sum[NUMIN];
     size_t           i = threadIdx.x;
 
     s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
-
-    for (size_t s = blockDim.x / 2; s > 32; s >>= 1)
+    
+    size_t s;
+    for (s = blockDim.x / 2; s > 16; s >>= 1)
     {
         __syncthreads();
         if (i < s)
@@ -113,39 +114,16 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
         }
     }
 
-    size_t t = s;
-    if (t < 32)
+    if (i < 32)
     {
-        float v = 0;
-        v += s_sum[t + 32];
-        __syncwarp();
-        s_sum[t] += v;
-        __syncwarp();
-        v += s_sum[t + 16];
-        __syncwarp();
-        s_sum[t] += v;
-        __syncwarp();
-        v += s_sum[t + 8];
-        __syncwarp();
-        s_sum[t] += v;
-        __syncwarp();
-        v += s_sum[t + 4];
-        __syncwarp();
-        s_sum[t] += v;
-        __syncwarp();
-        v += s_sum[t + 2];
-        __syncwarp();
-        s_sum[t] += v;
-        __syncwarp();
-        v += s_sum[t + 1];
-        __syncwarp();
-        s_sum[t] += v;
-        __syncwarp();
-    }
+        float val = s_sum[i];
+        for (int offset = 16; offset > 0; offset /= 2)
+            val += __shfl_down(val, offset);
 
-    if (i == 0)
-    {
-        hidden[blockIdx.x] = 1.0 / (1.0 + exp(-s_sum[0]));
+        if (i == 0)
+        {
+            hidden[blockIdx.x] = 1.0 / (1.0 + exp(-val));
+        }
     }
 }
 
@@ -206,7 +184,6 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
 
     if (i == 0)
     {
-        //*batch_error = s_sum[0];
         atomicAdd(batch_error, s_sum[0]);
     }
 }
@@ -225,15 +202,14 @@ void k_compute_delta_h(int numhid, int numOut, float* weight_ho, float* delta_o,
     {
         s_sumdow[i] = 0.0f;
     }
-    __syncthreads();
 
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
     {
+        __syncthreads();
         if (i < s)
         {
             s_sumdow[i] += s_sumdow[i + s];
         }
-        __syncthreads();
     }
 
     if (i == 0)
@@ -247,7 +223,9 @@ void k_compute_delta_ih(float* delta, float* in_a, char* in_b)
 {
     size_t i = threadIdx.x;
 
-    delta[blockIdx.x * blockDim.x + i] = d_eta * in_a[blockIdx.x] * in_b[i] + d_alpha * delta[blockIdx.x * blockDim.x + i];
+    float tmp_a = d_eta * in_a[blockIdx.x];
+    float tmp_b = d_alpha * delta[blockIdx.x * blockDim.x + i];
+    delta[blockIdx.x * blockDim.x + i] = in_b[i] ? tmp_a + tmp_b : tmp_b; 
 }
 
 __global__
@@ -498,11 +476,10 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         printf(".");
         fflush(stdout);
 
-        float tmp_batch_error;
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
         {
-            cudaCheckErrors(cudaMemset(d_batch_error, 0, sizeof(*d_batch_error)));
+            cudaMemset(d_batch_error, 0, sizeof(*d_batch_error));
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
             {
                 int p = ranpat[np];
@@ -517,7 +494,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             k_update_weights << < numHid, numIn >> > (d_weight_ih, d_delta_weight_ih, numHid, numIn);
             k_update_weights << < numOut, 128 >> > (d_weight_ho, d_delta_weight_ho, numOut, numHid);
 
-            cudaCheckErrors(cudaMemcpy(&h_batch_error, d_batch_error, sizeof(h_batch_error), cudaMemcpyDeviceToHost));
+            cudaMemcpy(&h_batch_error, d_batch_error, sizeof(h_batch_error), cudaMemcpyDeviceToHost);
             Error += h_batch_error;
         }
 
