@@ -103,16 +103,14 @@ void k_compute_hidden(float* hidden, size_t numHid, float* const weight_ih, size
     size_t           i = threadIdx.x;
 
     s_sum[i] = weight_ih[blockIdx.x * blockDim.x + i] * tset[i];
-    __syncthreads();
 
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
     {
+        __syncthreads();
         if (i < s)
         {
             s_sum[i] += s_sum[i + s];
         }
-
-        __syncthreads();
     }
 
     if (i == 0)
@@ -135,16 +133,14 @@ void k_compute_output(float* output, float* delta_output, size_t numOut, float* 
     {
         s_sum[i] = 0.0f;
     }
-    __syncthreads();
 
     for (size_t s = blockDim.x / 2; s > 0; s >>= 1)
     {
+        __syncthreads();
         if (i < s)
         {
             s_sum[i] += s_sum[i + s];
         }
-
-        __syncthreads();
     }
 
     if (i == 0)
@@ -180,7 +176,8 @@ void k_compute_batch_error(float* batch_error, float* output, float* target)
 
     if (i == 0)
     {
-        *batch_error = s_sum[0];
+        //*batch_error = s_sum[0];
+        atomicAdd(batch_error, s_sum[0]);
     }
 }
 
@@ -443,6 +440,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     float* d_batch_error;
 
     cudaCheckErrors(cudaMalloc((void**) &d_batch_error, sizeof(*d_batch_error)));
+    cudaCheckErrors(cudaMemset(d_batch_error, 0, sizeof(*d_batch_error)));
 
     // Malloc DeltaH in the device
     float* d_delta_h;
@@ -450,6 +448,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
     cudaCheckErrors(cudaMalloc((void**) &d_delta_h, numHid * sizeof(*d_delta_h)));
 
     Error = 10;
+    float h_batch_error;
     for (int epoch = 0; epoch < epochs && Error >= 0.0004; epoch++) // iterate weight updates
     {
         for (int p = 0; p < NUMPAT; p++)                            // randomize order of individuals
@@ -472,7 +471,7 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
         Error = 0.0;
         for (int nb = 0; nb < NUMPAT / BSIZE; nb++) // repeat for all batches
         {
-            BError = 0.0;
+            cudaCheckErrors(cudaMemset(d_batch_error, 0, sizeof(*d_batch_error)));
             for (int np = nb * BSIZE; np < (nb + 1) * BSIZE; np++) // repeat for all the training patterns within the batch
             {
                 int p = ranpat[np];
@@ -511,8 +510,6 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
 
                 k_compute_batch_error << < 1, 16 >> > (d_batch_error, d_output, &d_target[p * NUMOUT]);
                 cudaCheckErrors(cudaGetLastError());
-                cudaCheckErrors(cudaMemcpy(&tmp_batch_error, d_batch_error, sizeof(BError), cudaMemcpyDeviceToHost));
-                BError += tmp_batch_error;
 
                 /*
                  * for (int j = 0; j < numHid; j++)                                               // update delta weights DeltaWeightIH
@@ -562,7 +559,8 @@ void trainN(const int epochs, const int numIn, const int numHid, const int numOu
             k_update_weights << < numOut, 128 >> > (d_weight_ho, d_delta_weight_ho, numOut, numHid);
             cudaCheckErrors(cudaGetLastError());
 
-            Error += BError; // We only want to update Error once per iteration
+            cudaCheckErrors(cudaMemcpy(&h_batch_error, d_batch_error, sizeof(h_batch_error), cudaMemcpyDeviceToHost));
+            Error += h_batch_error; // We only want to update Error once per iteration
         }
 
 
