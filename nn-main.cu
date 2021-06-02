@@ -212,6 +212,8 @@ void k_compute_delta_ih(float* delta, float* in_a, char* in_b)
 {
     size_t i = threadIdx.x;
 
+    // Move the bulk of the computation to unconditional region
+    // By doing this we make sure this calculations are carried out in parallel
     float tmp_a = d_eta * in_a[blockIdx.x];
     float tmp_b = d_alpha * delta[blockIdx.x * blockDim.x + i];
     delta[blockIdx.x * blockDim.x + i] = in_b[i] ? tmp_a + tmp_b : tmp_b; 
