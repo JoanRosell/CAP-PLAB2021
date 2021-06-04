@@ -2,6 +2,7 @@
 #SBATCH --exclusive
 #SBATCH --partition=cuda.q
 #SBATCH --gres=gpu:GeForceRTX3080:1 #aolin24
+#SBATCH -w aolin24
 #
 # This script compiles and executes the project
 # Arguments (listed in read order):
@@ -30,6 +31,6 @@ export CC=$(which nvcc)
 
 ./compile.sh
 
-#nsys nvprof --print-gpu-trace build/CAP-PLAB2021.exe $epochs >> $filename.prof
+#nsys nvprof --print-gpu-trace build/CAP-PLAB2021.exe $epochs > $filename.prof
 build/CAP-PLAB2021.exe $epochs
 
