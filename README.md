@@ -59,10 +59,13 @@ Este script lanza un sbatch con el trabajo _job.sh_ y configura los nombres de l
 
 ## Status
 
- - [ ] Preparación del entorno de trabajo (git, scripts, etc.)
- - [ ] Análisis funcional
- - [ ] Análisis computacional (complejidad espacial y temporal)
- - [ ] Paralelización con OpenMP
+ - [x] Preparación del entorno de trabajo (git, scripts, etc.)
+ - [x] Análisis funcional
+ - [x] Análisis computacional (complejidad espacial y temporal)
+ - [x] Paralelización con OpenMP
+ - [x] Paralelización con MPI
+ - [x] Paralelización con CUDA
+ - [x] Paralelización con OpenMP + MPI 
 
 ## Future work
 
